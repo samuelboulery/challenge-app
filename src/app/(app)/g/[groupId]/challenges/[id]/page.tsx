@@ -7,6 +7,8 @@ import { Separator } from "@/components/ui/separator";
 import { ChallengeActions } from "@/components/shared/challenge-actions";
 import { SubmitProofForm } from "@/components/shared/submit-proof-form";
 import { getUserItemsByType } from "@/app/(app)/groups/[id]/shop-actions";
+import { getChallengeVotes } from "@/app/(app)/challenges/actions";
+import { DownloadProofButton } from "@/components/shared/download-proof-button";
 import { ArrowLeft, Flame, Calendar, ArrowRight, Zap } from "lucide-react";
 import type { ChallengeStatus } from "@/types/database.types";
 
@@ -59,11 +61,28 @@ export default async function GroupChallengeDetailPage({
   const groupName =
     (challenge.groups as { name: string })?.name ?? "?";
 
-  // Fetch available boosters for the target when challenge is proposed
   let availableBoosters: { id: string }[] = [];
   if (challenge.status === "proposed" && isTarget) {
     const boosters = await getUserItemsByType(groupId, "booster");
     availableBoosters = boosters.map((b) => ({ id: b.id }));
+  }
+
+  let voteInfo = null;
+  let isMember = false;
+  if (challenge.status === "proof_submitted") {
+    const votes = await getChallengeVotes(id);
+    if (!("error" in votes)) {
+      voteInfo = votes;
+    }
+    if (user) {
+      const { data: membership } = await supabase
+        .from("members")
+        .select("profile_id")
+        .eq("group_id", groupId)
+        .eq("profile_id", user.id)
+        .maybeSingle();
+      isMember = !!membership;
+    }
   }
 
   const { data: proofs } = await supabase
@@ -135,6 +154,8 @@ export default async function GroupChallengeDetailPage({
         groupId={groupId}
         hasBoosted={hasBoosted}
         availableBoosters={availableBoosters}
+        voteInfo={voteInfo}
+        isMember={isMember}
       />
 
       {challenge.status === "accepted" && isTarget && (
@@ -158,14 +179,19 @@ export default async function GroupChallengeDetailPage({
                   <div key={proof.id} className="rounded-lg border p-4">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-medium">{proofAuthor}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(proof.created_at).toLocaleDateString("fr-FR", {
-                          day: "numeric",
-                          month: "short",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        {proof.media_url && (
+                          <DownloadProofButton url={proof.media_url} />
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(proof.created_at).toLocaleDateString("fr-FR", {
+                            day: "numeric",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      </div>
                     </div>
                     {proof.media_url && (
                       <a

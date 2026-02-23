@@ -66,6 +66,11 @@ export const purchaseItemSchema = z.object({
   groupId: uuid,
 });
 
+export const voteOnChallengeSchema = z.object({
+  challengeId: uuid,
+  vote: z.enum(["approve", "reject"], { message: "Vote invalide" }),
+});
+
 export const updateProfileSchema = z.object({
   username: z.string().min(3, "3 caractères minimum").max(30, "30 caractères max"),
   avatarUrl: z.string().url().nullable(),

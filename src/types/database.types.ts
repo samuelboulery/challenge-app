@@ -524,6 +524,45 @@ export interface Database {
           },
         ];
       };
+      challenge_votes: {
+        Row: {
+          id: string;
+          challenge_id: string;
+          voter_id: string;
+          vote: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          challenge_id: string;
+          voter_id: string;
+          vote: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          challenge_id?: string;
+          voter_id?: string;
+          vote?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "challenge_votes_challenge_id_fkey";
+            columns: ["challenge_id"];
+            isOneToOne: false;
+            referencedRelation: "challenges";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "challenge_votes_voter_id_fkey";
+            columns: ["voter_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -543,9 +582,9 @@ export interface Database {
         Args: { code: string };
         Returns: string;
       };
-      validate_challenge: {
-        Args: { p_challenge_id: string };
-        Returns: undefined;
+      vote_on_challenge: {
+        Args: { p_challenge_id: string; p_vote: string };
+        Returns: Record<string, unknown>;
       };
       check_and_award_badges: {
         Args: { p_profile_id: string };

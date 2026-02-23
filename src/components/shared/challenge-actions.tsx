@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -10,16 +10,25 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
 import {
   acceptChallenge,
   declineChallenge,
-  validateChallenge,
-  rejectProof,
+  voteOnChallenge,
   getDeclineInfo,
 } from "@/app/(app)/challenges/actions";
 import type { ChallengeStatus } from "@/types/database.types";
-import { Check, X, Clock, Trophy, Shield, Zap, AlertTriangle } from "lucide-react";
+import { Check, X, Clock, Trophy, Shield, Zap, AlertTriangle, ThumbsUp, ThumbsDown } from "lucide-react";
 import { toast } from "sonner";
+
+export interface VoteInfo {
+  approvals: number;
+  rejections: number;
+  threshold: number;
+  eligible: number;
+  userVote: string | null;
+  voters: { id: string; username: string; vote: string }[];
+}
 
 interface ChallengeActionsProps {
   challengeId: string;
@@ -30,7 +39,16 @@ interface ChallengeActionsProps {
   groupId: string;
   hasBoosted?: boolean;
   availableBoosters?: { id: string }[];
+  voteInfo?: VoteInfo | null;
+  isMember?: boolean;
 }
+
+type DeclineInfoState = {
+  isFree: boolean;
+  penalty: number;
+  freeRemaining: number;
+  availableJokers: string[];
+};
 
 export function ChallengeActions({
   challengeId,
@@ -41,35 +59,17 @@ export function ChallengeActions({
   groupId,
   hasBoosted,
   availableBoosters = [],
+  voteInfo,
+  isMember,
 }: ChallengeActionsProps) {
   const [declineDialogOpen, setDeclineDialogOpen] = useState(false);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [acceptDialogOpen, setAcceptDialogOpen] = useState(false);
-  const [declineInfo, setDeclineInfo] = useState<{
-    isFree: boolean;
-    penalty: number;
-    freeRemaining: number;
-    availableJokers: string[];
-  } | null>(null);
+  const [declineInfo, setDeclineInfo] = useState<DeclineInfoState | null>(null);
+  const [cancelInfo, setCancelInfo] = useState<DeclineInfoState | null>(null);
+  const [currentVoteInfo, setCurrentVoteInfo] = useState<VoteInfo | null>(voteInfo ?? null);
 
   const [isPending, startTransition] = useTransition();
-
-  const [validateState, validateAction, validatePending] = useActionState(
-    async () => {
-      const result = await validateChallenge(challengeId);
-      return result;
-    },
-    null as { error?: string; success?: boolean } | null,
-  );
-
-  const [rejectState, rejectAction, rejectPending] = useActionState(
-    async () => {
-      const result = await rejectProof(challengeId);
-      return result;
-    },
-    null as { error?: string; success?: boolean } | null,
-  );
-
-  const error = validateState?.error || rejectState?.error;
 
   const handleDeclineClick = () => {
     startTransition(async () => {
@@ -108,6 +108,34 @@ export function ChallengeActions({
     });
   };
 
+  const handleCancelClick = () => {
+    startTransition(async () => {
+      const info = await getDeclineInfo(challengeId);
+      if ("error" in info) {
+        toast.error(info.error);
+        return;
+      }
+      setCancelInfo(info);
+      setCancelDialogOpen(true);
+    });
+  };
+
+  const handleCancelConfirm = (jokerInventoryId?: string) => {
+    startTransition(async () => {
+      const result = await declineChallenge(challengeId, jokerInventoryId);
+      setCancelDialogOpen(false);
+      if ("error" in result) {
+        toast.error(result.error);
+      } else if (result.jokerUsed) {
+        toast.success("Défi annulé (Joker utilisé, aucune pénalité)");
+      } else if (result.penalty && result.penalty > 0) {
+        toast.warning(`Défi annulé (-${result.penalty} points de pénalité)`);
+      } else {
+        toast.success("Défi annulé");
+      }
+    });
+  };
+
   const handleAcceptClick = () => {
     if (availableBoosters.length > 0) {
       setAcceptDialogOpen(true);
@@ -129,6 +157,34 @@ export function ChallengeActions({
         toast.error(result.error);
       } else if (result.boosted) {
         toast.success("Défi accepté avec Booster x2 !");
+      }
+    });
+  };
+
+  const handleVote = (vote: "approve" | "reject") => {
+    startTransition(async () => {
+      const result = await voteOnChallenge(challengeId, vote);
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
+      if (result.status === "validated") {
+        toast.success("Défi validé par le groupe !");
+      } else if (result.status === "rejected") {
+        toast.info("Preuve rejetée par le groupe");
+      } else {
+        const label = vote === "approve" ? "Approuvé" : "Rejeté";
+        toast.success(`${label} ! (${result.approvals}/${result.threshold})`);
+        setCurrentVoteInfo((prev) =>
+          prev
+            ? {
+                ...prev,
+                approvals: result.approvals ?? prev.approvals,
+                rejections: result.rejections ?? prev.rejections,
+                userVote: vote,
+              }
+            : null,
+        );
       }
     });
   };
@@ -158,7 +214,6 @@ export function ChallengeActions({
           </div>
         </div>
 
-        {/* Decline dialog with joker option */}
         <Dialog open={declineDialogOpen} onOpenChange={setDeclineDialogOpen}>
           <DialogContent>
             <DialogHeader>
@@ -213,7 +268,6 @@ export function ChallengeActions({
           </DialogContent>
         </Dialog>
 
-        {/* Accept dialog with booster option */}
         <Dialog open={acceptDialogOpen} onOpenChange={setAcceptDialogOpen}>
           <DialogContent>
             <DialogHeader>
@@ -266,12 +320,76 @@ export function ChallengeActions({
   }
 
   if (status === "accepted" && isTarget) {
-    return hasBoosted ? (
-      <div className="flex items-center gap-2 rounded-lg bg-yellow-50 p-4 text-sm text-yellow-700 dark:bg-yellow-950 dark:text-yellow-300">
-        <Zap className="size-4 shrink-0" />
-        Booster actif — x2 points à la validation
+    return (
+      <div className="space-y-3">
+        {hasBoosted && (
+          <div className="flex items-center gap-2 rounded-lg bg-yellow-50 p-4 text-sm text-yellow-700 dark:bg-yellow-950 dark:text-yellow-300">
+            <Zap className="size-4 shrink-0" />
+            Booster actif — x2 points à la validation
+          </div>
+        )}
+        <Button
+          variant="destructive"
+          className="w-full"
+          disabled={isPending}
+          onClick={handleCancelClick}
+        >
+          <X className="mr-1 size-4" />
+          {isPending ? "..." : "Annuler le défi"}
+        </Button>
+
+        <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <AlertTriangle className="size-5 text-orange-500" />
+                Confirmer l'annulation
+              </DialogTitle>
+              <DialogDescription>
+                {cancelInfo?.isFree
+                  ? "Ce défi sera annulé sans pénalité."
+                  : `Annuler ce défi te coûtera ${cancelInfo?.penalty ?? 0} points (50% des ${points} pts).`}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex-col gap-2 sm:flex-col">
+              {!cancelInfo?.isFree && (cancelInfo?.availableJokers.length ?? 0) > 0 && (
+                <Button
+                  className="w-full"
+                  onClick={() => handleCancelConfirm(cancelInfo?.availableJokers[0])}
+                  disabled={isPending}
+                >
+                  <Shield className="mr-1 size-4" />
+                  {isPending
+                    ? "..."
+                    : `Utiliser un Joker et annuler (${cancelInfo?.availableJokers.length ?? 0} dispo)`}
+                </Button>
+              )}
+              <Button
+                variant={cancelInfo?.isFree ? "default" : "destructive"}
+                className="w-full"
+                onClick={() => handleCancelConfirm()}
+                disabled={isPending}
+              >
+                <X className="mr-1 size-4" />
+                {isPending
+                  ? "..."
+                  : cancelInfo?.isFree
+                    ? "Confirmer l'annulation"
+                    : `Annuler et perdre ${cancelInfo?.penalty ?? 0} pts`}
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => setCancelDialogOpen(false)}
+                disabled={isPending}
+              >
+                Conserver le défi
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
-    ) : null;
+    );
   }
 
   if (status === "accepted" && isCreator) {
@@ -288,42 +406,62 @@ export function ChallengeActions({
     );
   }
 
-  if (status === "proof_submitted" && isCreator) {
+  if (status === "proof_submitted") {
+    const vi = currentVoteInfo;
+
+    if (isTarget) {
+      return (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 rounded-lg bg-muted p-4 text-sm text-muted-foreground">
+            <Clock className="size-4 shrink-0" />
+            En attente de validation par le groupe...
+          </div>
+          {vi && <VoteProgress voteInfo={vi} />}
+        </div>
+      );
+    }
+
+    const canVote = isMember && !isTarget;
+
     return (
       <div className="space-y-3">
-        {error && <p className="text-sm text-destructive">{error}</p>}
-        <div className="flex gap-2">
-          <form action={validateAction} className="flex-1">
+        {vi && <VoteProgress voteInfo={vi} />}
+        {canVote && (
+          <div className="flex gap-2">
             <Button
-              type="submit"
-              className="w-full"
-              disabled={validatePending}
+              className="flex-1"
+              variant={vi?.userVote === "approve" ? "default" : "outline"}
+              disabled={isPending}
+              onClick={() => handleVote("approve")}
             >
-              <Check className="mr-1 size-4" />
-              {validatePending ? "..." : "Valider"}
+              <ThumbsUp className="mr-1 size-4" />
+              {isPending ? "..." : "Approuver"}
             </Button>
-          </form>
-          <form action={rejectAction} className="flex-1">
             <Button
-              type="submit"
-              variant="outline"
-              className="w-full"
-              disabled={rejectPending}
+              className="flex-1"
+              variant={vi?.userVote === "reject" ? "destructive" : "outline"}
+              disabled={isPending}
+              onClick={() => handleVote("reject")}
             >
-              <X className="mr-1 size-4" />
-              {rejectPending ? "..." : "Rejeter"}
+              <ThumbsDown className="mr-1 size-4" />
+              {isPending ? "..." : "Rejeter"}
             </Button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
-  if (status === "proof_submitted" && isTarget) {
-    return (
-      <div className="flex items-center gap-2 rounded-lg bg-muted p-4 text-sm text-muted-foreground">
-        <Clock className="size-4 shrink-0" />
-        En attente de validation...
+          </div>
+        )}
+        {vi && vi.voters.length > 0 && (
+          <div className="text-xs text-muted-foreground space-y-0.5">
+            {vi.voters.map((v) => (
+              <div key={v.id} className="flex items-center gap-1">
+                {v.vote === "approve" ? (
+                  <ThumbsUp className="size-3 text-green-500" />
+                ) : (
+                  <ThumbsDown className="size-3 text-red-500" />
+                )}
+                <span>{v.username}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
@@ -347,4 +485,36 @@ export function ChallengeActions({
   }
 
   return null;
+}
+
+function VoteProgress({ voteInfo }: { voteInfo: VoteInfo }) {
+  const { approvals, rejections, threshold } = voteInfo;
+  const approvalPct = Math.min(100, Math.round((approvals / threshold) * 100));
+  const rejectionPct = Math.min(100, Math.round((rejections / threshold) * 100));
+
+  return (
+    <div className="space-y-2 rounded-lg border p-3">
+      <div className="flex items-center justify-between text-sm">
+        <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
+          <ThumbsUp className="size-3.5" />
+          {approvals}/{threshold}
+        </span>
+        <span className="text-xs text-muted-foreground">
+          Seuil : {threshold} vote{threshold > 1 ? "s" : ""}
+        </span>
+        <span className="flex items-center gap-1 text-red-600 dark:text-red-400">
+          {rejections}/{threshold}
+          <ThumbsDown className="size-3.5" />
+        </span>
+      </div>
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <Progress value={approvalPct} className="h-2 [&>div]:bg-green-500" />
+        </div>
+        <div className="flex-1">
+          <Progress value={rejectionPct} className="h-2 [&>div]:bg-red-500" />
+        </div>
+      </div>
+    </div>
+  );
 }

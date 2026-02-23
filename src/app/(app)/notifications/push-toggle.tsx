@@ -33,6 +33,19 @@ function detectStandalone(): boolean {
   );
 }
 
+async function getPushRegistration(): Promise<ServiceWorkerRegistration | null> {
+  if (!("serviceWorker" in navigator)) return null;
+
+  const existing = await navigator.serviceWorker.getRegistration();
+  if (existing) return existing;
+
+  try {
+    return await navigator.serviceWorker.register("/sw.js");
+  } catch {
+    return null;
+  }
+}
+
 export function PushToggle() {
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
@@ -41,7 +54,11 @@ export function PushToggle() {
   const [iosNeedInstall, setIosNeedInstall] = useState(false);
 
   useEffect(() => {
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+    if (
+      !("serviceWorker" in navigator) ||
+      !("PushManager" in window) ||
+      !("Notification" in window)
+    ) {
       setReady(true);
       return;
     }
@@ -58,30 +75,16 @@ export function PushToggle() {
 
     setIsSupported(true);
 
-    navigator.serviceWorker
-      .getRegistration()
+    getPushRegistration()
       .then((reg) => {
         if (!reg) {
-          const timeout = setTimeout(() => setReady(true), 3000);
-          navigator.serviceWorker.ready
-            .then((r) => {
-              clearTimeout(timeout);
-              return r.pushManager.getSubscription();
-            })
-            .then((sub) => {
-              setIsSubscribed(!!sub);
-              setReady(true);
-            })
-            .catch(() => setReady(true));
+          setReady(true);
           return;
         }
-        reg.pushManager
-          .getSubscription()
-          .then((sub) => {
-            setIsSubscribed(!!sub);
-            setReady(true);
-          })
-          .catch(() => setReady(true));
+        return reg.pushManager.getSubscription().then((sub) => {
+          setIsSubscribed(!!sub);
+          setReady(true);
+        });
       })
       .catch(() => setReady(true));
   }, []);
@@ -89,20 +92,33 @@ export function PushToggle() {
   const handleToggle = async () => {
     setLoading(true);
     try {
-      const reg = await navigator.serviceWorker.ready;
-
       if (isSubscribed) {
-        const sub = await reg.pushManager.getSubscription();
+        const reg = await navigator.serviceWorker.getRegistration();
+        const sub = await reg?.pushManager.getSubscription();
         if (sub) await sub.unsubscribe();
         await removeSubscription();
         setIsSubscribed(false);
         toast.success("Notifications push désactivées");
       } else {
-        const permission = await Notification.requestPermission();
+        if (!window.isSecureContext) {
+          toast.error("Les notifications push nécessitent une connexion sécurisée.");
+          return;
+        }
+
+        const permission =
+          Notification.permission === "granted"
+            ? "granted"
+            : await Notification.requestPermission();
         if (permission !== "granted") {
           toast.error(
             "Permission refusée. Active les notifications dans les réglages.",
           );
+          return;
+        }
+
+        const reg = await getPushRegistration();
+        if (!reg) {
+          toast.error("Service worker indisponible. Réessaie dans quelques secondes.");
           return;
         }
 
@@ -113,10 +129,13 @@ export function PushToggle() {
         }
 
         const keyArray = urlBase64ToUint8Array(vapidKey);
-        const sub = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: keyArray.buffer as ArrayBuffer,
-        });
+        const existingSub = await reg.pushManager.getSubscription();
+        const sub =
+          existingSub ??
+          (await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: keyArray,
+          }));
 
         const json = sub.toJSON();
         if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) {
@@ -124,10 +143,14 @@ export function PushToggle() {
           return;
         }
 
-        await saveSubscription({
+        const result = await saveSubscription({
           endpoint: json.endpoint,
           keys: { p256dh: json.keys.p256dh, auth: json.keys.auth },
         });
+        if (result?.error) {
+          toast.error("Impossible d'enregistrer l'abonnement push.");
+          return;
+        }
 
         setIsSubscribed(true);
         toast.success("Notifications push activées !");

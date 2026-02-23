@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { ChallengeStatus } from "@/types/database.types";
-import { createChallengeSchema, submitProofSchema, parseFormData } from "@/lib/validations";
+import { createChallengeSchema, submitProofSchema, voteOnChallengeSchema, parseFormData } from "@/lib/validations";
 import { notify } from "@/lib/notifications";
 import { awardBadges } from "@/lib/badges";
 
@@ -185,7 +185,7 @@ export async function declineChallenge(
     if (error.message.includes("Not the target"))
       return { error: "Action non autorisée" };
     if (error.message.includes("Invalid status"))
-      return { error: "Statut invalide" };
+      return { error: "Statut invalide pour cette action" };
     if (error.message.includes("Joker not found"))
       return { error: "Joker introuvable ou déjà utilisé" };
     return { error: error.message };
@@ -220,11 +220,15 @@ export async function getDeclineInfo(challengeId: string) {
 
   const { data: challenge } = await supabase
     .from("challenges")
-    .select("group_id, points")
+    .select("group_id, points, target_id, status")
     .eq("id", challengeId)
     .single();
 
   if (!challenge) return { error: "Défi introuvable" };
+  if (challenge.target_id !== user.id) return { error: "Action non autorisée" };
+  if (challenge.status !== "proposed" && challenge.status !== "accepted") {
+    return { error: "Statut invalide pour cette action" };
+  }
 
   const weekStart = getWeekStart();
 
@@ -268,34 +272,6 @@ function getWeekStart(): string {
   monday.setUTCDate(now.getUTCDate() - diff);
   monday.setUTCHours(0, 0, 0, 0);
   return monday.toISOString();
-}
-
-export async function rejectProof(challengeId: string) {
-  const supabase = await createClient();
-  const { data: challenge } = await supabase
-    .from("challenges")
-    .select("target_id, title, group_id")
-    .eq("id", challengeId)
-    .single();
-
-  const result = await updateChallengeStatus(
-    challengeId,
-    "proof_submitted",
-    "accepted",
-    "creator",
-  );
-
-  if ("success" in result && challenge) {
-    await notify(
-      challenge.target_id,
-      "challenge_rejected",
-      "Preuve refusée",
-      `Ta preuve pour le défi "${challenge.title}" a été refusée. Réessaie !`,
-      { challenge_id: challengeId, group_id: challenge.group_id },
-    );
-  }
-
-  return result;
 }
 
 export async function submitProof(formData: FormData) {
@@ -349,7 +325,13 @@ export async function submitProof(formData: FormData) {
   return { success: true };
 }
 
-export async function validateChallenge(challengeId: string) {
+export async function voteOnChallenge(challengeId: string, vote: string) {
+  const parsed = voteOnChallengeSchema.safeParse({ challengeId, vote });
+  if (!parsed.success) {
+    const msg = parsed.error.issues[0]?.message ?? "Données invalides";
+    return { error: msg };
+  }
+
   const supabase = await createClient();
 
   const { data: challenge } = await supabase
@@ -358,39 +340,111 @@ export async function validateChallenge(challengeId: string) {
     .eq("id", challengeId)
     .single();
 
-  const { error } = await supabase.rpc("validate_challenge", {
+  const { data: result, error } = await supabase.rpc("vote_on_challenge", {
     p_challenge_id: challengeId,
+    p_vote: parsed.data.vote,
   });
 
   if (error) {
-    if (error.message.includes("Not the creator"))
-      return { error: "Seul le créateur peut valider" };
+    if (error.message.includes("Target cannot vote"))
+      return { error: "La cible ne peut pas voter" };
     if (error.message.includes("Invalid status"))
       return { error: "Statut invalide" };
+    if (error.message.includes("Not a group member"))
+      return { error: "Tu ne fais pas partie de ce groupe" };
     return { error: error.message };
   }
 
-  if (challenge) {
-    const reward = challenge.booster_inventory_id
-      ? challenge.points * 2
-      : challenge.points;
-
-    await notify(
-      challenge.target_id,
-      "challenge_validated",
-      "Défi validé !",
-      `Ton défi "${challenge.title}" a été validé. +${reward} points !${challenge.booster_inventory_id ? " (x2 Booster)" : ""}`,
-      { challenge_id: challengeId, group_id: challenge.group_id },
-    );
-
-    await awardBadges(challenge.target_id);
-  }
+  const voteResult = result as {
+    status: string;
+    approvals: number;
+    rejections: number;
+    threshold: number;
+    reward?: number;
+  };
 
   if (challenge) {
+    if (voteResult.status === "validated") {
+      const reward = challenge.booster_inventory_id
+        ? challenge.points * 2
+        : challenge.points;
+
+      await notify(
+        challenge.target_id,
+        "challenge_validated",
+        "Défi validé !",
+        `Ton défi "${challenge.title}" a été validé. +${reward} points !${challenge.booster_inventory_id ? " (x2 Booster)" : ""}`,
+        { challenge_id: challengeId, group_id: challenge.group_id },
+      );
+
+      await awardBadges(challenge.target_id);
+    } else if (voteResult.status === "rejected") {
+      await notify(
+        challenge.target_id,
+        "challenge_rejected",
+        "Preuve refusée",
+        `Ta preuve pour le défi "${challenge.title}" a été refusée. Réessaie !`,
+        { challenge_id: challengeId, group_id: challenge.group_id },
+      );
+    }
+
     revalidatePath(`/g/${challenge.group_id}`);
   }
+
   revalidatePath("/profile");
-  return { success: true };
+  return { success: true, ...voteResult };
+}
+
+export async function getChallengeVotes(challengeId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "Non authentifié" };
+
+  const { data: challenge } = await supabase
+    .from("challenges")
+    .select("group_id, target_id")
+    .eq("id", challengeId)
+    .single();
+
+  if (!challenge) return { error: "Défi introuvable" };
+
+  const [{ data: votes }, { count: memberCount }] = await Promise.all([
+    supabase
+      .from("challenge_votes")
+      .select("voter_id, vote, profiles!challenge_votes_voter_id_fkey(username)")
+      .eq("challenge_id", challengeId),
+    supabase
+      .from("members")
+      .select("*", { count: "exact", head: true })
+      .eq("group_id", challenge.group_id)
+      .neq("profile_id", challenge.target_id),
+  ]);
+
+  const eligible = memberCount ?? 1;
+  const threshold = Math.max(1, Math.ceil(eligible / 4));
+  const allVotes = votes ?? [];
+
+  const approvals = allVotes.filter((v) => v.vote === "approve").length;
+  const rejections = allVotes.filter((v) => v.vote === "reject").length;
+  const userVote = allVotes.find((v) => v.voter_id === user.id)?.vote ?? null;
+
+  const voters = allVotes.map((v) => ({
+    id: v.voter_id,
+    username: (v.profiles as { username: string } | null)?.username ?? "?",
+    vote: v.vote,
+  }));
+
+  return {
+    approvals,
+    rejections,
+    threshold,
+    eligible,
+    userVote,
+    voters,
+  };
 }
 
 export async function getMyGroupChallenges(groupId: string) {
