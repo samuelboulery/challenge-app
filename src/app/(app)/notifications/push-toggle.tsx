@@ -19,6 +19,7 @@ export function PushToggle() {
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
@@ -27,6 +28,7 @@ export function PushToggle() {
     navigator.serviceWorker.ready.then((reg) => {
       reg.pushManager.getSubscription().then((sub) => {
         setIsSubscribed(!!sub);
+        setReady(true);
       });
     });
   }, []);
@@ -82,7 +84,7 @@ export function PushToggle() {
     }
   };
 
-  if (!isSupported) return null;
+  if (!isSupported || !ready) return null;
 
   return (
     <Button
