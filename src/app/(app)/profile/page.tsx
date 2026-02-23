@@ -59,10 +59,12 @@ function groupByGroupName(items: InventoryItem[]) {
     const groupName = shopItem?.groups?.name ?? "Inconnu";
     const groupId = shopItem?.group_id ?? "unknown";
 
-    if (!groups[groupId]) {
-      groups[groupId] = { groupName, items: [] };
+    let group = groups[groupId];
+    if (!group) {
+      group = { groupName, items: [] };
+      groups[groupId] = group;
     }
-    groups[groupId].items.push(item);
+    group.items.push(item);
   }
 
   return Object.values(groups);
@@ -211,8 +213,8 @@ export default async function ProfilePage() {
                               )}
                             </div>
                             <p className="text-xs text-muted-foreground">
-                              {isUsed
-                                ? `Utilisé le ${new Date(item.used_at!).toLocaleDateString("fr-FR")}`
+                              {isUsed && item.used_at
+                                ? `Utilisé le ${new Date(item.used_at).toLocaleDateString("fr-FR")}`
                                 : "Disponible"}
                             </p>
                           </div>

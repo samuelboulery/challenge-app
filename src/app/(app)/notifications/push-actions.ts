@@ -4,8 +4,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import webpush from "web-push";
 
-const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!;
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY!;
+const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY ?? "";
 
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
   webpush.setVapidDetails(
@@ -91,7 +91,10 @@ export async function sendPushToUser(
   );
 
   const failedEndpoints = results
-    .map((r, i) => (r.status === "rejected" ? subscriptions[i].endpoint : null))
+    .map((r, i) => {
+      const sub = subscriptions[i];
+      return r.status === "rejected" && sub ? sub.endpoint : null;
+    })
     .filter(Boolean);
 
   if (failedEndpoints.length > 0) {

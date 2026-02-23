@@ -45,19 +45,20 @@ export function PushToggle() {
         const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
         if (!vapidKey) return;
 
+        const keyArray = urlBase64ToUint8Array(vapidKey);
         const sub = await reg.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(vapidKey),
+          applicationServerKey: keyArray.buffer as ArrayBuffer,
         });
 
         const json = sub.toJSON();
-        if (!json.endpoint || !json.keys) return;
+        if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return;
 
         await saveSubscription({
           endpoint: json.endpoint,
           keys: {
-            p256dh: json.keys.p256dh!,
-            auth: json.keys.auth!,
+            p256dh: json.keys.p256dh,
+            auth: json.keys.auth,
           },
         });
 

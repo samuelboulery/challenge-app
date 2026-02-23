@@ -46,7 +46,7 @@ export function Leaderboard({ entries, currentUserId }: LeaderboardProps) {
               <div className="flex size-8 items-center justify-center">
                 {hasMedal ? (
                   <Medal
-                    className={cn("size-5", MEDAL_STYLES[index])}
+                    className={cn("size-5", MEDAL_STYLES[index] ?? "")}
                   />
                 ) : (
                   <span className="text-sm font-medium text-muted-foreground">
