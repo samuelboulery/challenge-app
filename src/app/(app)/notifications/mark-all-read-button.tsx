@@ -13,7 +13,7 @@ export function MarkAllReadButton() {
       variant="ghost"
       size="sm"
       disabled={isPending}
-      onClick={() => startTransition(() => markAllAsRead())}
+      onClick={() => startTransition(async () => { await markAllAsRead(); })}
     >
       <CheckCheck className="mr-1 size-4" />
       Tout lire
