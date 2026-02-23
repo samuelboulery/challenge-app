@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import { saveSubscription, removeSubscription } from "./push-actions";
 import { Button } from "@/components/ui/button";
-import { BellRing, BellOff } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { BellRing, BellOff, Bell, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
@@ -15,22 +16,74 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return arr;
 }
 
+function detectIOS(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
+function detectStandalone(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    ("standalone" in navigator &&
+      (navigator as unknown as { standalone?: boolean }).standalone === true)
+  );
+}
+
 export function PushToggle() {
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
+  const [iosNeedInstall, setIosNeedInstall] = useState(false);
 
   useEffect(() => {
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setReady(true);
+      return;
+    }
+
+    const isIOS = detectIOS();
+    const isStandalone = detectStandalone();
+
+    if (isIOS && !isStandalone) {
+      setIosNeedInstall(true);
+      setIsSupported(true);
+      setReady(true);
+      return;
+    }
+
     setIsSupported(true);
 
-    navigator.serviceWorker.ready.then((reg) => {
-      reg.pushManager.getSubscription().then((sub) => {
-        setIsSubscribed(!!sub);
-        setReady(true);
-      });
-    });
+    navigator.serviceWorker
+      .getRegistration()
+      .then((reg) => {
+        if (!reg) {
+          const timeout = setTimeout(() => setReady(true), 3000);
+          navigator.serviceWorker.ready
+            .then((r) => {
+              clearTimeout(timeout);
+              return r.pushManager.getSubscription();
+            })
+            .then((sub) => {
+              setIsSubscribed(!!sub);
+              setReady(true);
+            })
+            .catch(() => setReady(true));
+          return;
+        }
+        reg.pushManager
+          .getSubscription()
+          .then((sub) => {
+            setIsSubscribed(!!sub);
+            setReady(true);
+          })
+          .catch(() => setReady(true));
+      })
+      .catch(() => setReady(true));
   }, []);
 
   const handleToggle = async () => {
@@ -47,7 +100,9 @@ export function PushToggle() {
       } else {
         const permission = await Notification.requestPermission();
         if (permission !== "granted") {
-          toast.error("Permission refusée. Active les notifications dans les réglages.");
+          toast.error(
+            "Permission refusée. Active les notifications dans les réglages.",
+          );
           return;
         }
 
@@ -84,26 +139,83 @@ export function PushToggle() {
     }
   };
 
-  if (!isSupported || !ready) return null;
+  if (!ready) {
+    return (
+      <Card>
+        <CardContent className="flex items-center gap-4 py-4">
+          <Bell className="size-5 text-muted-foreground shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium">Notifications push</p>
+            <p className="text-xs text-muted-foreground">Chargement...</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!isSupported) {
+    return (
+      <Card>
+        <CardContent className="flex items-center gap-4 py-4">
+          <BellOff className="size-5 text-muted-foreground shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium">Notifications push</p>
+            <p className="text-xs text-muted-foreground">
+              Ton navigateur ne supporte pas les notifications push.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (iosNeedInstall) {
+    return (
+      <Card>
+        <CardContent className="flex items-center gap-4 py-4">
+          <Smartphone className="size-5 text-indigo-500 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium">Notifications push</p>
+            <p className="text-xs text-muted-foreground">
+              Installe l&apos;app sur ton écran d&apos;accueil pour activer les
+              notifications push (iOS 16.4+).
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
-    <Button
-      variant={isSubscribed ? "outline" : "default"}
-      size="sm"
-      onClick={handleToggle}
-      disabled={loading}
-    >
-      {isSubscribed ? (
-        <>
-          <BellOff className="mr-1 size-4" />
-          {loading ? "..." : "Désactiver les push"}
-        </>
-      ) : (
-        <>
-          <BellRing className="mr-1 size-4" />
-          {loading ? "..." : "Activer les push"}
-        </>
-      )}
-    </Button>
+    <Card>
+      <CardContent className="flex items-center gap-4 py-4">
+        {isSubscribed ? (
+          <BellRing className="size-5 text-green-500 shrink-0" />
+        ) : (
+          <BellOff className="size-5 text-muted-foreground shrink-0" />
+        )}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium">Notifications push</p>
+          <p className="text-xs text-muted-foreground">
+            {isSubscribed
+              ? "Tu recevras les notifications même quand l'app est fermée."
+              : "Reçois les notifications même quand l'app est fermée."}
+          </p>
+        </div>
+        <Button
+          variant={isSubscribed ? "outline" : "default"}
+          size="sm"
+          onClick={handleToggle}
+          disabled={loading}
+          className="shrink-0"
+        >
+          {loading
+            ? "..."
+            : isSubscribed
+              ? "Désactiver"
+              : "Activer"}
+        </Button>
+      </CardContent>
+    </Card>
   );
 }

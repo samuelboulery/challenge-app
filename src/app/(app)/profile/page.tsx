@@ -3,6 +3,7 @@ import { logout } from "@/app/(auth)/actions";
 import { getMyInventory } from "@/app/(app)/groups/[id]/shop-actions";
 import { getAllBadges, getMyBadges, getBadgeProgress } from "./badge-actions";
 import { EditProfileDialog } from "./edit-profile-dialog";
+import { PushToggle } from "@/app/(app)/notifications/push-toggle";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -145,6 +146,13 @@ export default async function ProfilePage() {
           myBadges={myBadges}
           progress={progress}
         />
+      </section>
+
+      <Separator className="my-6" />
+
+      <section>
+        <h2 className="mb-4 text-lg font-semibold">Notifications</h2>
+        <PushToggle />
       </section>
 
       <Separator className="my-6" />

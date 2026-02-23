@@ -1,7 +1,6 @@
 import { getNotifications } from "./actions";
 import { MarkAllReadButton } from "./mark-all-read-button";
 import { NotificationItem } from "./notification-item";
-import { PushToggle } from "./push-toggle";
 import { Bell } from "lucide-react";
 
 export default async function NotificationsPage() {
@@ -12,10 +11,7 @@ export default async function NotificationsPage() {
     <main className="px-4 pt-8">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Notifications</h1>
-        <div className="flex gap-2">
-          <PushToggle />
-          {hasUnread && <MarkAllReadButton />}
-        </div>
+        {hasUnread && <MarkAllReadButton />}
       </div>
 
       {notifications.length === 0 ? (
