@@ -82,7 +82,7 @@ export function NotificationItem({ notification }: NotificationItemProps) {
 
   const handleClick = () => {
     if (!notification.read) {
-      startTransition(() => markAsRead(notification.id));
+      startTransition(async () => { await markAsRead(notification.id); });
     }
     if (deepLink) {
       router.push(deepLink);
