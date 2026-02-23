@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -171,12 +172,14 @@ export default async function GroupChallengeDetailPage({
                         href={proof.media_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="mt-3 block"
+                        className="mt-3 block relative max-h-64 w-full overflow-hidden rounded-lg border"
                       >
-                        <img
+                        <Image
                           src={proof.media_url}
                           alt="Preuve photo"
-                          className="max-h-64 rounded-lg border object-cover"
+                          width={400}
+                          height={256}
+                          className="h-auto w-full object-cover"
                         />
                       </a>
                     )}

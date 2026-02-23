@@ -4,8 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, Swords, Users, UserCircle, Bell } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useEffect, useMemo, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSupabase } from "@/hooks/use-supabase";
 import { useGroup } from "./group-context";
 
 function getCookie(name: string): string | undefined {
@@ -16,8 +16,10 @@ function getCookie(name: string): string | undefined {
 export function BottomNav() {
   const pathname = usePathname();
   const group = useGroup();
+  const supabase = useSupabase();
   const [unreadCount, setUnreadCount] = useState(0);
   const [cookieGroupId, setCookieGroupId] = useState<string | undefined>();
+  const userIdRef = useRef<string | null>(null);
 
   const pathnameGroupId = useMemo(() => {
     const match = pathname.match(/^\/g\/([^/]+)/);
@@ -57,29 +59,27 @@ export function BottomNav() {
     return items;
   }, [groupPrefix, group?.groupName]);
 
-  useEffect(() => {
-    const supabase = createClient();
-
-    async function fetchUnread() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+  const fetchUnread = useCallback(async () => {
+    if (!userIdRef.current) {
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-
-      const { count } = await supabase
-        .from("notifications")
-        .select("*", { count: "exact", head: true })
-        .eq("profile_id", user.id)
-        .eq("read", false);
-
-      setUnreadCount(count ?? 0);
+      userIdRef.current = user.id;
     }
 
-    fetchUnread();
+    const { count } = await supabase
+      .from("notifications")
+      .select("*", { count: "exact", head: true })
+      .eq("profile_id", userIdRef.current)
+      .eq("read", false);
 
+    setUnreadCount(count ?? 0);
+  }, [supabase]);
+
+  useEffect(() => {
+    fetchUnread();
     const interval = setInterval(fetchUnread, 30_000);
     return () => clearInterval(interval);
-  }, [pathname]);
+  }, [fetchUnread]);
 
   return (
     <nav aria-label="Navigation principale" className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background pb-safe">

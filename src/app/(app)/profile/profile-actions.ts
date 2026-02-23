@@ -2,8 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { updateProfileSchema, parseFormData } from "@/lib/validations";
 
 export async function updateProfile(formData: FormData) {
+  const parsed = parseFormData(updateProfileSchema, formData);
+  if (!parsed.success) return { error: parsed.error };
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -11,19 +15,12 @@ export async function updateProfile(formData: FormData) {
 
   if (!user) return { error: "Non authentifié" };
 
-  const username = (formData.get("username") as string)?.trim();
-  const avatarUrl = (formData.get("avatarUrl") as string) || null;
-
-  if (!username || username.length < 3) {
-    return { error: "Le nom d'utilisateur doit faire au moins 3 caractères" };
-  }
-
   const updateData: { username: string; avatar_url?: string | null } = {
-    username,
+    username: parsed.data.username,
   };
 
-  if (avatarUrl !== null) {
-    updateData.avatar_url = avatarUrl;
+  if (parsed.data.avatarUrl !== null) {
+    updateData.avatar_url = parsed.data.avatarUrl;
   }
 
   const { error } = await supabase

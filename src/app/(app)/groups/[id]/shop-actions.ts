@@ -2,127 +2,90 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-
-async function awardBadges(profileId: string) {
-  const supabase = await createClient();
-  await supabase.rpc("check_and_award_badges", { p_profile_id: profileId });
-}
-
-async function notify(
-  profileId: string,
-  type: string,
-  title: string,
-  body: string,
-  metadata: Record<string, unknown> = {},
-) {
-  const supabase = await createClient();
-  await supabase.rpc("create_notification", {
-    p_profile_id: profileId,
-    p_type: type,
-    p_title: title,
-    p_body: body,
-    p_metadata: metadata,
-  });
-
-  try {
-    const { sendPushToUser } = await import(
-      "@/app/(app)/notifications/push-actions"
-    );
-    await sendPushToUser(profileId, title, body);
-  } catch {
-    // Push not available
-  }
-}
+import {
+  addShopItemSchema,
+  deleteShopItemSchema,
+  updateShopItemSchema,
+  purchaseItemSchema,
+  parseFormData,
+} from "@/lib/validations";
+import { notify } from "@/lib/notifications";
+import { awardBadges } from "@/lib/badges";
 
 export async function addShopItem(formData: FormData) {
+  const parsed = parseFormData(addShopItemSchema, formData);
+  if (!parsed.success) return { error: parsed.error };
+
   const supabase = await createClient();
-
-  const groupId = formData.get("groupId") as string;
-  const name = formData.get("name") as string;
-  const description = (formData.get("description") as string) || null;
-  const price = parseInt(formData.get("price") as string, 10);
-  const stockRaw = formData.get("stock") as string;
-  const stock = stockRaw ? parseInt(stockRaw, 10) : null;
-  const itemType = (formData.get("itemType") as string) || "custom";
-
   const { error } = await supabase.from("shop_items").insert({
-    group_id: groupId,
-    name,
-    description,
-    price,
-    stock,
-    item_type: itemType,
+    group_id: parsed.data.groupId,
+    name: parsed.data.name,
+    description: parsed.data.description,
+    price: parsed.data.price,
+    stock: parsed.data.stock,
+    item_type: parsed.data.itemType,
   });
 
   if (error) return { error: error.message };
 
-  revalidatePath(`/g/${groupId}/manage`);
-  revalidatePath(`/g/${groupId}`);
+  revalidatePath(`/g/${parsed.data.groupId}/manage`);
+  revalidatePath(`/g/${parsed.data.groupId}`);
   return { success: true };
 }
 
 export async function deleteShopItem(formData: FormData) {
+  const parsed = parseFormData(deleteShopItemSchema, formData);
+  if (!parsed.success) return { error: parsed.error };
+
   const supabase = await createClient();
-
-  const itemId = formData.get("itemId") as string;
-  const groupId = formData.get("groupId") as string;
-
   const { error } = await supabase
     .from("shop_items")
     .delete()
-    .eq("id", itemId);
+    .eq("id", parsed.data.itemId);
 
   if (error) return { error: error.message };
 
-  revalidatePath(`/g/${groupId}/manage`);
-  revalidatePath(`/g/${groupId}`);
+  revalidatePath(`/g/${parsed.data.groupId}/manage`);
+  revalidatePath(`/g/${parsed.data.groupId}`);
   return { success: true };
 }
 
 export async function updateShopItem(formData: FormData) {
+  const parsed = parseFormData(updateShopItemSchema, formData);
+  if (!parsed.success) return { error: parsed.error };
+
   const supabase = await createClient();
-
-  const itemId = formData.get("itemId") as string;
-  const groupId = formData.get("groupId") as string;
-  const price = parseInt(formData.get("price") as string, 10);
-  const stockRaw = formData.get("stock") as string;
-  const stock = stockRaw ? parseInt(stockRaw, 10) : null;
-
-  if (isNaN(price) || price < 1) return { error: "Prix invalide" };
-
   const { error } = await supabase
     .from("shop_items")
-    .update({ price, stock })
-    .eq("id", itemId);
+    .update({ price: parsed.data.price, stock: parsed.data.stock })
+    .eq("id", parsed.data.itemId);
 
   if (error) return { error: error.message };
 
-  revalidatePath(`/g/${groupId}/manage`);
-  revalidatePath(`/g/${groupId}`);
+  revalidatePath(`/g/${parsed.data.groupId}/manage`);
+  revalidatePath(`/g/${parsed.data.groupId}`);
   return { success: true };
 }
 
 export async function purchaseItem(formData: FormData) {
+  const parsed = parseFormData(purchaseItemSchema, formData);
+  if (!parsed.success) return { error: parsed.error };
+
   const supabase = await createClient();
-
-  const itemId = formData.get("itemId") as string;
-  const groupId = formData.get("groupId") as string;
-
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) return { error: "Non authentifié" };
 
-  // Check item type before purchasing
   const { data: shopItem } = await supabase
     .from("shop_items")
     .select("item_type")
-    .eq("id", itemId)
+    .eq("id", parsed.data.itemId)
     .single();
 
   const { error } = await supabase.rpc("purchase_item", {
-    p_item_id: itemId,
+    p_item_id: parsed.data.itemId,
   });
 
   if (error) {
@@ -137,13 +100,12 @@ export async function purchaseItem(formData: FormData) {
 
   await awardBadges(user.id);
 
-  // Auto-use voleur immediately after purchase
   if (shopItem?.item_type === "voleur") {
     const { data: invItem } = await supabase
       .from("inventory")
       .select("id")
       .eq("profile_id", user.id)
-      .eq("shop_item_id", itemId)
+      .eq("shop_item_id", parsed.data.itemId)
       .is("used_at", null)
       .order("purchased_at", { ascending: false })
       .limit(1)
@@ -156,38 +118,44 @@ export async function purchaseItem(formData: FormData) {
       );
 
       if (voleurError) {
-        revalidatePath(`/g/${groupId}`);
+        revalidatePath(`/g/${parsed.data.groupId}`);
         revalidatePath("/profile");
         return { error: `Achat effectué mais vol échoué : ${voleurError.message}` };
       }
 
-      const parsed = voleurResult as {
+      const voleur = voleurResult as {
         stolen: number;
         victim_id: string;
         victim_username: string;
       };
 
+      const { data: buyerProfile } = await supabase
+        .from("profiles")
+        .select("username")
+        .eq("id", user.id)
+        .single();
+
       await notify(
-        parsed.victim_id,
+        voleur.victim_id,
         "challenge_penalty",
         "Vol de points !",
-        `${user.id} t'a volé ${parsed.stolen} points avec un Voleur !`,
-        { group_id: groupId },
+        `${buyerProfile?.username ?? "Quelqu'un"} t'a volé ${voleur.stolen} points avec un Voleur !`,
+        { group_id: parsed.data.groupId },
       );
 
-      revalidatePath(`/g/${groupId}`);
+      revalidatePath(`/g/${parsed.data.groupId}`);
       revalidatePath("/profile");
       return {
         success: true,
         voleur: {
-          stolen: parsed.stolen,
-          victimUsername: parsed.victim_username,
+          stolen: voleur.stolen,
+          victimUsername: voleur.victim_username,
         },
       };
     }
   }
 
-  revalidatePath(`/g/${groupId}`);
+  revalidatePath(`/g/${parsed.data.groupId}`);
   revalidatePath("/profile");
   return { success: true };
 }

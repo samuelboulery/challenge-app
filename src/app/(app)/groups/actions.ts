@@ -3,13 +3,18 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-
-async function awardBadges(profileId: string) {
-  const supabase = await createClient();
-  await supabase.rpc("check_and_award_badges", { p_profile_id: profileId });
-}
+import {
+  createGroupSchema,
+  joinGroupSchema,
+  leaveGroupSchema,
+  parseFormData,
+} from "@/lib/validations";
+import { awardBadges } from "@/lib/badges";
 
 export async function createGroup(formData: FormData) {
+  const parsed = parseFormData(createGroupSchema, formData);
+  if (!parsed.success) return { error: parsed.error };
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -19,14 +24,11 @@ export async function createGroup(formData: FormData) {
     return { error: "Non authentifié" };
   }
 
-  const name = formData.get("name") as string;
-  const description = (formData.get("description") as string) || null;
-
   const { data: newGroup, error } = await supabase
     .from("groups")
     .insert({
-      name,
-      description,
+      name: parsed.data.name,
+      description: parsed.data.description,
       created_by: user.id,
     })
     .select("id")
@@ -41,16 +43,17 @@ export async function createGroup(formData: FormData) {
 }
 
 export async function joinGroupByCode(formData: FormData) {
-  const supabase = await createClient();
+  const parsed = parseFormData(joinGroupSchema, formData);
+  if (!parsed.success) return { error: parsed.error };
 
-  const code = (formData.get("code") as string).trim();
+  const supabase = await createClient();
 
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   const { data, error } = await supabase.rpc("join_group_by_invite_code", {
-    code,
+    code: parsed.data.code.trim(),
   });
 
   if (error) {
@@ -69,6 +72,9 @@ export async function joinGroupByCode(formData: FormData) {
 }
 
 export async function leaveGroup(formData: FormData) {
+  const parsed = parseFormData(leaveGroupSchema, formData);
+  if (!parsed.success) return { error: parsed.error };
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -78,12 +84,21 @@ export async function leaveGroup(formData: FormData) {
     return { error: "Non authentifié" };
   }
 
-  const groupId = formData.get("groupId") as string;
+  const { data: member } = await supabase
+    .from("members")
+    .select("role")
+    .eq("group_id", parsed.data.groupId)
+    .eq("profile_id", user.id)
+    .single();
+
+  if (member?.role === "owner") {
+    return { error: "Le propriétaire ne peut pas quitter le groupe. Transfère la propriété d'abord." };
+  }
 
   const { error } = await supabase
     .from("members")
     .delete()
-    .eq("group_id", groupId)
+    .eq("group_id", parsed.data.groupId)
     .eq("profile_id", user.id);
 
   if (error) {

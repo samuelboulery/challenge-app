@@ -20,9 +20,16 @@ export function SubmitProofForm({ challengeId }: SubmitProofFormProps) {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      setError("Format non supporté. Utilise JPEG, PNG, WebP ou GIF.");
+      return;
+    }
 
     if (file.size > 5 * 1024 * 1024) {
       setError("L'image ne doit pas dépasser 5 Mo");

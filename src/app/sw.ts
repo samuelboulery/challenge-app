@@ -31,10 +31,12 @@ self.addEventListener("push", (event) => {
     };
 
     const title = data.title ?? "Challenge App";
-    const options: NotificationOptions = {
+    const options: NotificationOptions & { renotify?: boolean } = {
       body: data.body ?? "",
       icon: "/icons/icon-192x192.png",
       badge: "/icons/icon-192x192.png",
+      tag: data.url ?? "default",
+      renotify: true,
       data: { url: data.url ?? "/" },
     };
 

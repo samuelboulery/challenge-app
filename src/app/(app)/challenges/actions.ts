@@ -3,39 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { ChallengeStatus } from "@/types/database.types";
-
-async function notify(
-  profileId: string,
-  type: string,
-  title: string,
-  body: string,
-  metadata: Record<string, unknown> = {},
-) {
-  const supabase = await createClient();
-  await supabase.rpc("create_notification", {
-    p_profile_id: profileId,
-    p_type: type,
-    p_title: title,
-    p_body: body,
-    p_metadata: metadata,
-  });
-
-  try {
-    const { sendPushToUser } = await import(
-      "@/app/(app)/notifications/push-actions"
-    );
-    await sendPushToUser(profileId, title, body);
-  } catch {
-    // Push not available or failed silently
-  }
-}
-
-async function awardBadges(profileId: string) {
-  const supabase = await createClient();
-  await supabase.rpc("check_and_award_badges", { p_profile_id: profileId });
-}
+import { createChallengeSchema, submitProofSchema, parseFormData } from "@/lib/validations";
+import { notify } from "@/lib/notifications";
+import { awardBadges } from "@/lib/badges";
 
 export async function createChallenge(formData: FormData) {
+  const parsed = parseFormData(createChallengeSchema, formData);
+  if (!parsed.success) return { error: parsed.error };
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -43,15 +18,7 @@ export async function createChallenge(formData: FormData) {
 
   if (!user) return { error: "Non authentifié" };
 
-  const groupId = formData.get("groupId") as string;
-  const targetId = formData.get("targetId") as string;
-  const title = formData.get("title") as string;
-  const description = (formData.get("description") as string) || null;
-  const points = parseInt(formData.get("points") as string, 10);
-  const deadlineRaw = formData.get("deadline") as string;
-  const deadline = deadlineRaw || null;
-
-  if (targetId === user.id) {
+  if (parsed.data.targetId === user.id) {
     return { error: "Tu ne peux pas te défier toi-même" };
   }
 
@@ -64,13 +31,13 @@ export async function createChallenge(formData: FormData) {
   const { data: newChallenge, error } = await supabase
     .from("challenges")
     .insert({
-      group_id: groupId,
+      group_id: parsed.data.groupId,
       creator_id: user.id,
-      target_id: targetId,
-      title,
-      description,
-      points,
-      deadline,
+      target_id: parsed.data.targetId,
+      title: parsed.data.title,
+      description: parsed.data.description,
+      points: parsed.data.points,
+      deadline: parsed.data.deadline,
     })
     .select("id")
     .single();
@@ -78,14 +45,14 @@ export async function createChallenge(formData: FormData) {
   if (error) return { error: error.message };
 
   await notify(
-    targetId,
+    parsed.data.targetId,
     "challenge_received",
     "Nouveau défi !",
-    `${profile?.username ?? "Quelqu'un"} t'a lancé le défi "${title}"`,
-    { group_id: groupId, challenge_id: newChallenge.id },
+    `${profile?.username ?? "Quelqu'un"} t'a lancé le défi "${parsed.data.title}"`,
+    { group_id: parsed.data.groupId, challenge_id: newChallenge.id },
   );
 
-  revalidatePath(`/g/${groupId}`);
+  revalidatePath(`/g/${parsed.data.groupId}`);
   return { success: true };
 }
 
@@ -295,11 +262,11 @@ export async function getDeclineInfo(challengeId: string) {
 
 function getWeekStart(): string {
   const now = new Date();
-  const day = now.getDay();
+  const day = now.getUTCDay();
   const diff = day === 0 ? 6 : day - 1;
   const monday = new Date(now);
-  monday.setDate(now.getDate() - diff);
-  monday.setHours(0, 0, 0, 0);
+  monday.setUTCDate(now.getUTCDate() - diff);
+  monday.setUTCHours(0, 0, 0, 0);
   return monday.toISOString();
 }
 
@@ -332,6 +299,9 @@ export async function rejectProof(challengeId: string) {
 }
 
 export async function submitProof(formData: FormData) {
+  const parsed = parseFormData(submitProofSchema, formData);
+  if (!parsed.success) return { error: parsed.error };
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -339,14 +309,10 @@ export async function submitProof(formData: FormData) {
 
   if (!user) return { error: "Non authentifié" };
 
-  const challengeId = formData.get("challengeId") as string;
-  const comment = (formData.get("comment") as string) || null;
-  const mediaUrl = (formData.get("mediaUrl") as string) || null;
-
   const { data: challenge } = await supabase
     .from("challenges")
     .select("*")
-    .eq("id", challengeId)
+    .eq("id", parsed.data.challengeId)
     .single();
 
   if (!challenge) return { error: "Défi introuvable" };
@@ -356,10 +322,10 @@ export async function submitProof(formData: FormData) {
   }
 
   const { error: proofError } = await supabase.from("proofs").insert({
-    challenge_id: challengeId,
+    challenge_id: parsed.data.challengeId,
     submitted_by: user.id,
-    comment,
-    media_url: mediaUrl,
+    comment: parsed.data.comment,
+    media_url: parsed.data.mediaUrl,
   });
 
   if (proofError) return { error: proofError.message };
@@ -367,7 +333,7 @@ export async function submitProof(formData: FormData) {
   const { error: updateError } = await supabase
     .from("challenges")
     .update({ status: "proof_submitted" as ChallengeStatus })
-    .eq("id", challengeId);
+    .eq("id", parsed.data.challengeId);
 
   if (updateError) return { error: updateError.message };
 
@@ -376,7 +342,7 @@ export async function submitProof(formData: FormData) {
     "proof_submitted",
     "Preuve soumise",
     `Une preuve a été soumise pour le défi "${challenge.title}"`,
-    { challenge_id: challengeId, group_id: challenge.group_id },
+    { challenge_id: parsed.data.challengeId, group_id: challenge.group_id },
   );
 
   revalidatePath(`/g/${challenge.group_id}`);
