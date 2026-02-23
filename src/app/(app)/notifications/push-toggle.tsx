@@ -129,12 +129,13 @@ export function PushToggle() {
         }
 
         const keyArray = urlBase64ToUint8Array(vapidKey);
+        const applicationServerKey = keyArray.buffer as ArrayBuffer;
         const existingSub = await reg.pushManager.getSubscription();
         const sub =
           existingSub ??
           (await reg.pushManager.subscribe({
             userVisibleOnly: true,
-            applicationServerKey: keyArray,
+            applicationServerKey,
           }));
 
         const json = sub.toJSON();
