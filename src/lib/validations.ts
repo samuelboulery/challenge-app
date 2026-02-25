@@ -40,6 +40,21 @@ export const leaveGroupSchema = z.object({
   groupId: uuid,
 });
 
+export const updateGroupSchema = z.object({
+  groupId: uuid,
+  name: z.string().min(1, "Le nom est requis").max(MAX_NAME, `${MAX_NAME} caractères max`),
+  description: z.string().max(MAX_TEXT).nullable(),
+});
+
+export const deleteGroupSchema = z.object({
+  groupId: uuid,
+});
+
+export const transferGroupOwnershipSchema = z.object({
+  groupId: uuid,
+  newOwnerId: uuid,
+});
+
 export const addShopItemSchema = z.object({
   groupId: uuid,
   name: z.string().min(1, "Le nom est requis").max(MAX_NAME),
@@ -69,6 +84,16 @@ export const purchaseItemSchema = z.object({
 export const voteOnChallengeSchema = z.object({
   challengeId: uuid,
   vote: z.enum(["approve", "reject"], { message: "Vote invalide" }),
+});
+
+export const voteChallengePriceSchema = z.object({
+  challengeId: uuid,
+  vote: z.enum(["approve", "reject"], { message: "Vote invalide" }),
+  counterPoints: z.number().int().min(1, "La contre-proposition doit être positive").nullable(),
+});
+
+export const cancelChallengeByCreatorSchema = z.object({
+  challengeId: uuid,
 });
 
 export const updateProfileSchema = z.object({

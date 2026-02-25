@@ -6,7 +6,7 @@ import { AddShopItemDialog } from "@/components/shared/add-shop-item-dialog";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Flame,
+  Coins,
   Bell,
   Activity,
   Trophy,
@@ -43,7 +43,7 @@ export default async function GroupHomePage({
           </p>
         </div>
         <div className="flex items-center gap-2 rounded-lg bg-muted px-4 py-2">
-          <Flame className="size-5 text-orange-500" />
+          <Coins className="size-5 text-yellow-500" />
           <span className="text-2xl font-bold">
             {profile?.total_points ?? 0}
           </span>
@@ -62,7 +62,7 @@ export default async function GroupHomePage({
                 En attente ({pendingActions.length})
               </h2>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-2">
               {pendingActions.map((c) => (
                 <ChallengeCard
                   key={c.id}
@@ -114,7 +114,7 @@ export default async function GroupHomePage({
               Aucune activité récente.
             </p>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {recentActivity.slice(0, 3).map((c) => (
                 <ChallengeCard
                   key={c.id}

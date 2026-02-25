@@ -11,7 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { BadgeGrid } from "./badge-grid";
 import {
-  Flame,
+  Coins,
   Package,
   Award,
   Shield,
@@ -123,7 +123,7 @@ export default async function ProfilePage() {
               </p>
             </div>
             <div className="flex items-center gap-2 rounded-lg bg-muted px-4 py-2">
-              <Flame className="size-5 text-orange-500" />
+              <Coins className="size-5 text-yellow-500" />
               <span className="text-2xl font-bold">{profile.total_points}</span>
               <span className="text-sm text-muted-foreground">pts</span>
             </div>

@@ -10,6 +10,7 @@ import { getShopItems } from "@/app/(app)/groups/[id]/shop-actions";
 import { Leaderboard } from "@/components/shared/leaderboard";
 import { GroupSwitcher } from "@/components/shared/group-switcher";
 import { getMyGroups } from "@/app/(app)/groups/actions";
+import { GroupAdminActions } from "@/app/(app)/groups/[id]/group-admin-actions";
 import {
   Crown,
   Shield,
@@ -223,6 +224,24 @@ export default async function GroupManagePage({
           })}
         </div>
       </section>
+
+      {isAdmin && (
+        <>
+          <Separator className="my-6" />
+          <GroupAdminActions
+            groupId={groupId}
+            name={group.name}
+            description={group.description}
+            members={(members ?? []).map((member) => ({
+              profileId: member.profile_id,
+              username:
+                (member.profiles as { username: string } | null)?.username ??
+                "Utilisateur",
+              role: member.role,
+            }))}
+          />
+        </>
+      )}
 
       {!isOwner && (
         <>

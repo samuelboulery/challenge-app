@@ -16,7 +16,7 @@ export default function GroupHomeLoading() {
       <Separator className="my-6" />
 
       <Skeleton className="h-5 w-32 mb-4" />
-      <div className="space-y-3">
+      <div className="space-y-2">
         <ChallengeCardSkeleton />
         <ChallengeCardSkeleton />
         <ChallengeCardSkeleton />

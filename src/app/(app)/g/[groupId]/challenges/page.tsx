@@ -68,7 +68,7 @@ export default async function GroupChallengesPage({
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="received" className="mt-4 space-y-3">
+        <TabsContent value="received" className="mt-4 space-y-2">
           {received.length === 0 ? (
             <EmptyState />
           ) : (
@@ -87,7 +87,7 @@ export default async function GroupChallengesPage({
           )}
         </TabsContent>
 
-        <TabsContent value="sent" className="mt-4 space-y-3">
+        <TabsContent value="sent" className="mt-4 space-y-2">
           {sent.length === 0 ? (
             <EmptyState />
           ) : (

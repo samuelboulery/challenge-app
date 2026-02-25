@@ -18,7 +18,7 @@ export default function HomeLoading() {
       <div className="space-y-2 mb-4">
         <Skeleton className="h-5 w-32" />
       </div>
-      <div className="space-y-3">
+      <div className="space-y-2">
         <ChallengeCardSkeleton />
         <ChallengeCardSkeleton />
         <ChallengeCardSkeleton />

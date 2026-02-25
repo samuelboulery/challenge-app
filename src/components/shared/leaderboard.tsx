@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { Flame, Medal } from "lucide-react";
+import { Coins, Medal } from "lucide-react";
 
 interface LeaderboardEntry {
   profileId: string;
@@ -60,7 +60,7 @@ export function Leaderboard({ entries, currentUserId }: LeaderboardProps) {
               </span>
             </div>
             <div className="flex items-center gap-1.5">
-              <Flame className="size-4 text-orange-500" />
+              <Coins className="size-4 text-yellow-500" />
               <span className="font-semibold">{entry.totalPoints}</span>
             </div>
           </div>

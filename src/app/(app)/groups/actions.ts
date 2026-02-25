@@ -7,6 +7,9 @@ import {
   createGroupSchema,
   joinGroupSchema,
   leaveGroupSchema,
+  updateGroupSchema,
+  deleteGroupSchema,
+  transferGroupOwnershipSchema,
   parseFormData,
 } from "@/lib/validations";
 import { awardBadges } from "@/lib/badges";
@@ -24,22 +27,21 @@ export async function createGroup(formData: FormData) {
     return { error: "Non authentifié" };
   }
 
-  const { data: newGroup, error } = await supabase
-    .from("groups")
-    .insert({
-      name: parsed.data.name,
-      description: parsed.data.description,
-      created_by: user.id,
-    })
-    .select("id")
-    .single();
+  const { data: groupId, error } = await supabase.rpc("create_group", {
+    p_name: parsed.data.name,
+    p_description: parsed.data.description ?? null,
+  });
 
   if (error) {
     return { error: error.message };
   }
 
+  if (!groupId) {
+    return { error: "Impossible de créer le groupe" };
+  }
+
   revalidatePath("/");
-  redirect(`/g/${newGroup.id}`);
+  redirect(`/g/${groupId}`);
 }
 
 export async function joinGroupByCode(formData: FormData) {
@@ -104,6 +106,113 @@ export async function leaveGroup(formData: FormData) {
   if (error) {
     return { error: error.message };
   }
+
+  revalidatePath("/");
+  redirect("/");
+}
+
+export async function updateGroup(formData: FormData) {
+  const parsed = parseFormData(updateGroupSchema, formData);
+  if (!parsed.success) return { error: parsed.error };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "Non authentifié" };
+
+  const { data: membership } = await supabase
+    .from("members")
+    .select("role")
+    .eq("group_id", parsed.data.groupId)
+    .eq("profile_id", user.id)
+    .single();
+
+  if (!membership || (membership.role !== "owner" && membership.role !== "admin")) {
+    return { error: "Action non autorisée" };
+  }
+
+  const { error } = await supabase
+    .from("groups")
+    .update({
+      name: parsed.data.name,
+      description: parsed.data.description,
+    })
+    .eq("id", parsed.data.groupId);
+
+  if (error) return { error: error.message };
+
+  revalidatePath(`/g/${parsed.data.groupId}`);
+  revalidatePath(`/g/${parsed.data.groupId}/manage`);
+  return { success: true };
+}
+
+export async function transferGroupOwnership(formData: FormData) {
+  const parsed = parseFormData(transferGroupOwnershipSchema, formData);
+  if (!parsed.success) return { error: parsed.error };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "Non authentifié" };
+
+  const { data: membership } = await supabase
+    .from("members")
+    .select("role")
+    .eq("group_id", parsed.data.groupId)
+    .eq("profile_id", user.id)
+    .single();
+
+  if (!membership || (membership.role !== "owner" && membership.role !== "admin")) {
+    return { error: "Action non autorisée" };
+  }
+
+  if (parsed.data.newOwnerId === user.id) {
+    return { error: "Tu es déjà propriétaire" };
+  }
+
+  const { error } = await supabase.rpc("transfer_group_ownership", {
+    p_group_id: parsed.data.groupId,
+    p_new_owner_id: parsed.data.newOwnerId,
+  });
+
+  if (error) return { error: error.message };
+
+  revalidatePath(`/g/${parsed.data.groupId}`);
+  revalidatePath(`/g/${parsed.data.groupId}/manage`);
+  return { success: true };
+}
+
+export async function deleteGroup(formData: FormData) {
+  const parsed = parseFormData(deleteGroupSchema, formData);
+  if (!parsed.success) return { error: parsed.error };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "Non authentifié" };
+
+  const { data: membership } = await supabase
+    .from("members")
+    .select("role")
+    .eq("group_id", parsed.data.groupId)
+    .eq("profile_id", user.id)
+    .single();
+
+  if (!membership || (membership.role !== "owner" && membership.role !== "admin")) {
+    return { error: "Action non autorisée" };
+  }
+
+  const { error } = await supabase.rpc("delete_group_admin", {
+    p_group_id: parsed.data.groupId,
+  });
+
+  if (error) return { error: error.message };
 
   revalidatePath("/");
   redirect("/");

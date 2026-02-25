@@ -3,7 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { ChallengeStatus } from "@/types/database.types";
-import { createChallengeSchema, submitProofSchema, voteOnChallengeSchema, parseFormData } from "@/lib/validations";
+import {
+  createChallengeSchema,
+  submitProofSchema,
+  voteOnChallengeSchema,
+  voteChallengePriceSchema,
+  cancelChallengeByCreatorSchema,
+  parseFormData,
+} from "@/lib/validations";
 import { notify } from "@/lib/notifications";
 import { awardBadges } from "@/lib/badges";
 
@@ -43,6 +50,14 @@ export async function createChallenge(formData: FormData) {
     .single();
 
   if (error) return { error: error.message };
+
+  const { error: pricingError } = await supabase.rpc(
+    "start_challenge_price_negotiation",
+    {
+      p_challenge_id: newChallenge.id,
+    },
+  );
+  if (pricingError) return { error: pricingError.message };
 
   await notify(
     parsed.data.targetId,
@@ -116,6 +131,9 @@ export async function acceptChallenge(
   if (!challenge) return { error: "Défi introuvable" };
   if (challenge.target_id !== user.id) return { error: "Action non autorisée" };
   if (challenge.status !== "proposed") {
+    if (challenge.status === "negotiating") {
+      return { error: "Le tarif du défi doit d'abord être validé par le groupe" };
+    }
     return { error: "Statut invalide pour cette action" };
   }
 
@@ -393,6 +411,149 @@ export async function voteOnChallenge(challengeId: string, vote: string) {
 
   revalidatePath("/profile");
   return { success: true, ...voteResult };
+}
+
+export async function voteChallengePrice(
+  challengeId: string,
+  vote: "approve" | "reject",
+  counterPoints?: number,
+): Promise<
+  | { error: string }
+  | {
+      success: true;
+      status?: string;
+      round?: number;
+      proposed_points?: number;
+      approvals?: number;
+      rejections?: number;
+      threshold?: number;
+    }
+> {
+  const parsed = voteChallengePriceSchema.safeParse({
+    challengeId,
+    vote,
+    counterPoints: counterPoints ?? null,
+  });
+  if (!parsed.success) {
+    const msg = parsed.error.issues[0]?.message ?? "Données invalides";
+    return { error: msg };
+  }
+
+  const supabase = await createClient();
+
+  const { data: challenge } = await supabase
+    .from("challenges")
+    .select("group_id")
+    .eq("id", challengeId)
+    .single();
+
+  const { data, error } = await supabase.rpc("vote_challenge_price", {
+    p_challenge_id: challengeId,
+    p_vote: parsed.data.vote,
+    p_counter_points: parsed.data.counterPoints ?? null,
+  });
+
+  if (error) {
+    if (error.message.includes("Not allowed to validate price")) {
+      return { error: "Seuls les autres membres (hors lanceur/cible) peuvent valider le tarif" };
+    }
+    if (error.message.includes("Invalid status")) {
+      return { error: "Le défi n'est plus en phase de négociation" };
+    }
+    if (error.message.includes("Not a group member")) {
+      return { error: "Tu ne fais pas partie de ce groupe" };
+    }
+    if (error.message.includes("Invalid counter proposal")) {
+      return { error: "La contre-proposition doit être supérieure à 0" };
+    }
+    return { error: error.message };
+  }
+
+  if (challenge?.group_id) {
+    revalidatePath(`/g/${challenge.group_id}`);
+    revalidatePath(`/g/${challenge.group_id}/challenges/${challengeId}`);
+  }
+
+  const payload = (data ?? {}) as {
+    status?: string;
+    round?: number;
+    proposed_points?: number;
+    approvals?: number;
+    rejections?: number;
+    threshold?: number;
+  };
+
+  return { success: true, ...payload };
+}
+
+export async function cancelChallengeByCreator(challengeId: string) {
+  const parsed = cancelChallengeByCreatorSchema.safeParse({ challengeId });
+  if (!parsed.success) {
+    const msg = parsed.error.issues[0]?.message ?? "Données invalides";
+    return { error: msg };
+  }
+
+  const supabase = await createClient();
+
+  const { data: challenge } = await supabase
+    .from("challenges")
+    .select("group_id")
+    .eq("id", challengeId)
+    .single();
+
+  const { data, error } = await supabase.rpc("cancel_challenge_by_creator", {
+    p_challenge_id: challengeId,
+  });
+
+  if (error) {
+    if (error.message.includes("Not allowed")) {
+      return { error: "Seul le lanceur du défi peut annuler cette négociation" };
+    }
+    if (error.message.includes("Invalid status")) {
+      return { error: "Le défi n'est pas en négociation" };
+    }
+    return { error: error.message };
+  }
+
+  if (challenge?.group_id) {
+    revalidatePath(`/g/${challenge.group_id}`);
+    revalidatePath(`/g/${challenge.group_id}/challenges/${challengeId}`);
+  }
+
+  return { success: true, ...(data as Record<string, unknown>) };
+}
+
+export async function getChallengePriceState(challengeId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "Non authentifié" };
+
+  const { data, error } = await supabase.rpc("get_challenge_price_state", {
+    p_challenge_id: challengeId,
+  });
+
+  if (error) {
+    if (error.message.includes("Not a group member")) {
+      return { error: "Tu ne fais pas partie de ce groupe" };
+    }
+    return { error: error.message };
+  }
+
+  return data as {
+    challenge_status?: string;
+    round?: number;
+    proposed_points?: number;
+    proposed_by?: string;
+    approvals?: number;
+    rejections?: number;
+    threshold?: number;
+    validators_count?: number;
+    user_vote?: string | null;
+    votes?: { voter_id: string; username: string; vote: string }[];
+  };
 }
 
 export async function getChallengeVotes(challengeId: string) {

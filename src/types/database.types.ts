@@ -582,6 +582,41 @@ export interface Database {
         Args: { code: string };
         Returns: string;
       };
+      create_group: {
+        Args: {
+          p_name: string;
+          p_description?: string | null;
+        };
+        Returns: string;
+      };
+      delete_group_admin: {
+        Args: { p_group_id: string };
+        Returns: undefined;
+      };
+      transfer_group_ownership: {
+        Args: { p_group_id: string; p_new_owner_id: string };
+        Returns: undefined;
+      };
+      start_challenge_price_negotiation: {
+        Args: { p_challenge_id: string };
+        Returns: Record<string, unknown>;
+      };
+      vote_challenge_price: {
+        Args: {
+          p_challenge_id: string;
+          p_vote: string;
+          p_counter_points?: number | null;
+        };
+        Returns: Record<string, unknown>;
+      };
+      cancel_challenge_by_creator: {
+        Args: { p_challenge_id: string };
+        Returns: Record<string, unknown>;
+      };
+      get_challenge_price_state: {
+        Args: { p_challenge_id: string };
+        Returns: Record<string, unknown>;
+      };
       vote_on_challenge: {
         Args: { p_challenge_id: string; p_vote: string };
         Returns: Record<string, unknown>;

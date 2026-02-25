@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronRight, Flame } from "lucide-react";
+import { ChevronRight, Coins } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { ChallengeStatus } from "@/types/database.types";
@@ -9,7 +9,7 @@ const STATUS_CONFIG: Record<
   { label: string; variant: "default" | "secondary" | "outline" | "destructive" }
 > = {
   proposed: { label: "Proposé", variant: "outline" },
-  negotiating: { label: "Négociation", variant: "outline" },
+  negotiating: { label: "Tarif en négociation", variant: "outline" },
   accepted: { label: "Accepté", variant: "secondary" },
   in_progress: { label: "En cours", variant: "secondary" },
   proof_submitted: { label: "Preuve soumise", variant: "default" },
@@ -46,7 +46,7 @@ export function ChallengeCard({
     : `/challenges/${id}`;
 
   return (
-    <Link href={href}>
+    <Link href={href} className="block">
       <Card className="transition-colors hover:bg-accent/50">
         <CardContent className="flex items-center justify-between py-4">
           <div className="min-w-0 flex-1">
@@ -61,7 +61,7 @@ export function ChallengeCard({
             </p>
             <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
               <span className="flex items-center gap-1">
-                <Flame className="size-3.5" />
+                <Coins className="size-3.5" />
                 {points} pts
               </span>
               {groupName && <span>{groupName}</span>}

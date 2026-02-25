@@ -7,9 +7,12 @@ import { Separator } from "@/components/ui/separator";
 import { ChallengeActions } from "@/components/shared/challenge-actions";
 import { SubmitProofForm } from "@/components/shared/submit-proof-form";
 import { getUserItemsByType } from "@/app/(app)/groups/[id]/shop-actions";
-import { getChallengeVotes } from "@/app/(app)/challenges/actions";
+import {
+  getChallengeVotes,
+  getChallengePriceState,
+} from "@/app/(app)/challenges/actions";
 import { DownloadProofButton } from "@/components/shared/download-proof-button";
-import { ArrowLeft, Flame, Calendar, ArrowRight, Zap } from "lucide-react";
+import { ArrowLeft, Coins, Calendar, ArrowRight, Zap } from "lucide-react";
 import type { ChallengeStatus } from "@/types/database.types";
 
 const STATUS_CONFIG: Record<
@@ -17,7 +20,7 @@ const STATUS_CONFIG: Record<
   { label: string; variant: "default" | "secondary" | "outline" | "destructive" }
 > = {
   proposed: { label: "Proposé", variant: "outline" },
-  negotiating: { label: "Négociation", variant: "outline" },
+  negotiating: { label: "Tarif en négociation", variant: "outline" },
   accepted: { label: "Accepté", variant: "secondary" },
   in_progress: { label: "En cours", variant: "secondary" },
   proof_submitted: { label: "Preuve soumise", variant: "default" },
@@ -68,20 +71,30 @@ export default async function GroupChallengeDetailPage({
   }
 
   let voteInfo = null;
+  let priceState = null;
   let isMember = false;
+
+  if (user) {
+    const { data: membership } = await supabase
+      .from("members")
+      .select("profile_id")
+      .eq("group_id", groupId)
+      .eq("profile_id", user.id)
+      .maybeSingle();
+    isMember = !!membership;
+  }
+
   if (challenge.status === "proof_submitted") {
     const votes = await getChallengeVotes(id);
     if (!("error" in votes)) {
       voteInfo = votes;
     }
-    if (user) {
-      const { data: membership } = await supabase
-        .from("members")
-        .select("profile_id")
-        .eq("group_id", groupId)
-        .eq("profile_id", user.id)
-        .maybeSingle();
-      isMember = !!membership;
+  }
+
+  if (challenge.status === "negotiating") {
+    const pricing = await getChallengePriceState(id);
+    if (!("error" in pricing)) {
+      priceState = pricing;
     }
   }
 
@@ -128,7 +141,7 @@ export default async function GroupChallengeDetailPage({
           <span className="font-medium">{targetName}</span>
         </div>
         <div className="flex items-center gap-1 text-muted-foreground">
-          <Flame className="size-4" />
+          <Coins className="size-4" />
           <span className="font-semibold text-foreground">
             {hasBoosted ? `${challenge.points} x2` : challenge.points}
           </span>{" "}
@@ -156,6 +169,8 @@ export default async function GroupChallengeDetailPage({
         availableBoosters={availableBoosters}
         voteInfo={voteInfo}
         isMember={isMember}
+        isValidator={isMember && !isCreator && !isTarget}
+        priceState={priceState}
       />
 
       {challenge.status === "accepted" && isTarget && (

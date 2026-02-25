@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { BuyItemButton } from "./buy-item-button";
-import { Flame, Package, Trash2, Shield, Zap, Skull, Pencil } from "lucide-react";
+import { Coins, Package, Trash2, Shield, Zap, Skull, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { useEffect } from "react";
 
@@ -117,7 +117,7 @@ export function ShopItemCard({
             )}
             <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
               <span className="flex items-center gap-1">
-                <Flame className="size-3.5" />
+                <Coins className="size-3.5" />
                 {price} pts
               </span>
               <span className="flex items-center gap-1">
