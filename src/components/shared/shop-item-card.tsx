@@ -4,7 +4,6 @@ import { useActionState, useState } from "react";
 import { deleteShopItem, updateShopItem } from "@/app/(app)/groups/[id]/shop-actions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -16,35 +15,11 @@ import {
   ResponsivePanelTitle,
 } from "@/components/ui/responsive-panel";
 import { BuyItemButton } from "./buy-item-button";
-import { Coins, Package, Trash2, Shield, Zap, Skull, Pencil, Crown } from "lucide-react";
+import { Coins, Package, Trash2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { useEffect } from "react";
-
-const ITEM_TYPE_CONFIG: Record<
-  string,
-  { label: string; icon: typeof Shield; className: string }
-> = {
-  joker: {
-    label: "Joker",
-    icon: Shield,
-    className: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
-  },
-  booster: {
-    label: "Booster",
-    icon: Zap,
-    className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300",
-  },
-  voleur: {
-    label: "Voleur",
-    icon: Skull,
-    className: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
-  },
-  item_49_3: {
-    label: "49.3",
-    icon: Crown,
-    className: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300",
-  },
-};
+import { getStoreItemCategoryLabel } from "@/lib/store-item-types";
+import { StoreItemCategoryBadge } from "./store-item-category-badge";
 
 interface ShopItemCardProps {
   id: string;
@@ -55,6 +30,8 @@ interface ShopItemCardProps {
   stock: number | null;
   itemType: string;
   isAdmin: boolean;
+  groupMembers?: { id: string; username: string }[];
+  currentUserId?: string;
 }
 
 export function ShopItemCard({
@@ -66,7 +43,10 @@ export function ShopItemCard({
   stock,
   itemType,
   isAdmin,
+  groupMembers = [],
+  currentUserId,
 }: ShopItemCardProps) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const isSpecial = itemType !== "custom";
 
@@ -99,50 +79,68 @@ export function ShopItemCard({
   }, [editState]);
 
   const outOfStock = stock !== null && stock <= 0;
-  const typeConfig = ITEM_TYPE_CONFIG[itemType];
+  const itemCategoryLabel = getStoreItemCategoryLabel(itemType);
+  const stockLabel = stock === null ? "Illimité" : `${stock} restant${stock > 1 ? "s" : ""}`;
+
+  const openDetails = () => {
+    setDetailsOpen(true);
+  };
 
   return (
     <>
-      <Card className={outOfStock ? "opacity-60" : ""}>
-        <CardContent className="flex items-center justify-between py-3 sm:py-4">
+      <Card className={outOfStock ? "py-0 opacity-60" : "py-0"}>
+        <CardContent
+          className="flex items-center justify-between py-2.5 pr-2.5 sm:py-3 sm:pr-3"
+          role="button"
+          tabIndex={0}
+          onClick={openDetails}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              openDetails();
+            }
+          }}
+        >
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <h3 className="truncate text-sm font-semibold sm:text-base">{name}</h3>
-              {typeConfig && (
-                <Badge variant="secondary" className={`shrink-0 text-[11px] sm:text-xs ${typeConfig.className}`}>
-                  <typeConfig.icon className="mr-1 size-3" />
-                  {typeConfig.label}
-                </Badge>
-              )}
+              <StoreItemCategoryBadge itemType={itemType} />
             </div>
-            {description && (
-              <p className="mt-0.5 truncate text-xs text-muted-foreground sm:text-sm">
-                {description}
-              </p>
-            )}
-            <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground sm:gap-3 sm:text-xs">
+            <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground sm:mt-1 sm:gap-3 sm:text-xs">
               <span className="flex items-center gap-1">
                 <Coins className="size-3.5" />
                 {price} pts
               </span>
               <span className="flex items-center gap-1">
                 <Package className="size-3.5" />
-                {stock === null ? "Illimité" : `${stock} restant${stock > 1 ? "s" : ""}`}
+                {stockLabel}
               </span>
             </div>
-            {itemType === "voleur" && (
-              <p className="mt-1 text-xs text-orange-600 dark:text-orange-400">
+            {["voleur", "robin_des_bois", "mouchard"].includes(itemType) && (
+              <p className="mt-0.5 text-xs text-orange-600 dark:text-orange-400 sm:mt-1">
                 Effet immédiat à l&apos;achat
               </p>
             )}
+            {["menottes", "embargo"].includes(itemType) && (
+              <p className="mt-0.5 text-xs text-orange-600 dark:text-orange-400 sm:mt-1">
+                Effet immédiat avec choix de cible
+              </p>
+            )}
           </div>
-          <div className="ml-2 flex shrink-0 items-center gap-1.5 sm:ml-3 sm:gap-2">
+          <div
+            className="ml-2 flex shrink-0 items-center gap-1.5 sm:ml-3 sm:gap-2"
+            onClick={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
             <BuyItemButton
               itemId={id}
               groupId={groupId}
               price={price}
               itemType={itemType}
               disabled={outOfStock}
+              groupMembers={groupMembers}
+              currentUserId={currentUserId}
             />
             {isAdmin && (
               <>
@@ -172,6 +170,43 @@ export function ShopItemCard({
           </div>
         </CardContent>
       </Card>
+
+      <ResponsivePanel open={detailsOpen} onOpenChange={setDetailsOpen}>
+        <ResponsivePanelContent>
+          <ResponsivePanelHeader>
+            <ResponsivePanelTitle>{name}</ResponsivePanelTitle>
+            <ResponsivePanelDescription>
+              {`${itemCategoryLabel} · ${price} pts`}
+            </ResponsivePanelDescription>
+          </ResponsivePanelHeader>
+          <div className="space-y-3 py-4">
+            {description ? (
+              <p className="text-sm leading-relaxed">{description}</p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Aucune description disponible pour cet item.
+              </p>
+            )}
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Coins className="size-4" />
+              <span>{price} points</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Package className="size-4" />
+              <span>{stockLabel}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                Catégorie:
+              </span>
+              <StoreItemCategoryBadge
+                itemType={itemType}
+                className="text-[10px] sm:text-[11px]"
+              />
+            </div>
+          </div>
+        </ResponsivePanelContent>
+      </ResponsivePanel>
 
       <ResponsivePanel open={editOpen} onOpenChange={setEditOpen}>
         <ResponsivePanelContent>

@@ -17,7 +17,27 @@ export type TransactionType =
   | "refund"
   | "season_reset";
 
-export type ItemType = "custom" | "joker" | "booster" | "voleur" | "item_49_3";
+export type ItemType =
+  | "custom"
+  | "joker"
+  | "booster"
+  | "voleur"
+  | "item_49_3"
+  | "gilet_pare_balles"
+  | "mode_fantome"
+  | "miroir_magique"
+  | "patate_chaude"
+  | "cinquante_cinquante"
+  | "menottes"
+  | "surcharge"
+  | "sniper"
+  | "embargo"
+  | "roulette_russe"
+  | "robin_des_bois"
+  | "amnesie"
+  | "mouchard"
+  | "assurance"
+  | "quitte_ou_double";
 
 export type MemberRole = "owner" | "admin" | "member";
 
@@ -212,6 +232,12 @@ export interface Database {
           status: ChallengeStatus;
           deadline: string | null;
           booster_inventory_id: string | null;
+          no_negotiation: boolean;
+          insurance_enabled: boolean;
+          double_or_nothing_requested: boolean;
+          double_or_nothing_approved: boolean;
+          challenge_bundle_id: string | null;
+          bundle_choice_required: boolean;
           contested_once: boolean;
           proof_rejections_count: number;
           created_at: string;
@@ -228,6 +254,12 @@ export interface Database {
           status?: ChallengeStatus;
           deadline?: string | null;
           booster_inventory_id?: string | null;
+          no_negotiation?: boolean;
+          insurance_enabled?: boolean;
+          double_or_nothing_requested?: boolean;
+          double_or_nothing_approved?: boolean;
+          challenge_bundle_id?: string | null;
+          bundle_choice_required?: boolean;
           contested_once?: boolean;
           proof_rejections_count?: number;
           created_at?: string;
@@ -244,6 +276,12 @@ export interface Database {
           status?: ChallengeStatus;
           deadline?: string | null;
           booster_inventory_id?: string | null;
+          no_negotiation?: boolean;
+          insurance_enabled?: boolean;
+          double_or_nothing_requested?: boolean;
+          double_or_nothing_approved?: boolean;
+          challenge_bundle_id?: string | null;
+          bundle_choice_required?: boolean;
           contested_once?: boolean;
           proof_rejections_count?: number;
           created_at?: string;
@@ -323,6 +361,7 @@ export interface Database {
           type: TransactionType;
           challenge_id: string | null;
           shop_item_id: string | null;
+          global_shop_item_id: string | null;
           group_id: string | null;
           created_at: string;
         };
@@ -333,6 +372,7 @@ export interface Database {
           type: TransactionType;
           challenge_id?: string | null;
           shop_item_id?: string | null;
+          global_shop_item_id?: string | null;
           group_id?: string | null;
           created_at?: string;
         };
@@ -343,6 +383,7 @@ export interface Database {
           type?: TransactionType;
           challenge_id?: string | null;
           shop_item_id?: string | null;
+          global_shop_item_id?: string | null;
           group_id?: string | null;
           created_at?: string;
         };
@@ -425,7 +466,9 @@ export interface Database {
         Row: {
           id: string;
           profile_id: string;
-          shop_item_id: string;
+          shop_item_id: string | null;
+          global_shop_item_id: string | null;
+          purchased_group_id: string | null;
           purchased_at: string;
           used_at: string | null;
           used_on_challenge_id: string | null;
@@ -433,7 +476,9 @@ export interface Database {
         Insert: {
           id?: string;
           profile_id: string;
-          shop_item_id: string;
+          shop_item_id?: string | null;
+          global_shop_item_id?: string | null;
+          purchased_group_id?: string | null;
           purchased_at?: string;
           used_at?: string | null;
           used_on_challenge_id?: string | null;
@@ -441,7 +486,9 @@ export interface Database {
         Update: {
           id?: string;
           profile_id?: string;
-          shop_item_id?: string;
+          shop_item_id?: string | null;
+          global_shop_item_id?: string | null;
+          purchased_group_id?: string | null;
           purchased_at?: string;
           used_at?: string | null;
           used_on_challenge_id?: string | null;
@@ -459,6 +506,95 @@ export interface Database {
             columns: ["shop_item_id"];
             isOneToOne: false;
             referencedRelation: "shop_items";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "inventory_global_shop_item_id_fkey";
+            columns: ["global_shop_item_id"];
+            isOneToOne: false;
+            referencedRelation: "global_shop_items";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "inventory_purchased_group_id_fkey";
+            columns: ["purchased_group_id"];
+            isOneToOne: false;
+            referencedRelation: "groups";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      global_shop_items: {
+        Row: {
+          id: string;
+          item_type: string;
+          name: string;
+          description: string | null;
+          price: number;
+          stock: number | null;
+          is_active_global: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          item_type: string;
+          name: string;
+          description?: string | null;
+          price: number;
+          stock?: number | null;
+          is_active_global?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          item_type?: string;
+          name?: string;
+          description?: string | null;
+          price?: number;
+          stock?: number | null;
+          is_active_global?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      group_enabled_items: {
+        Row: {
+          group_id: string;
+          global_item_id: string;
+          enabled: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          group_id: string;
+          global_item_id: string;
+          enabled?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          group_id?: string;
+          global_item_id?: string;
+          enabled?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "group_enabled_items_group_id_fkey";
+            columns: ["group_id"];
+            isOneToOne: false;
+            referencedRelation: "groups";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "group_enabled_items_global_item_id_fkey";
+            columns: ["global_item_id"];
+            isOneToOne: false;
+            referencedRelation: "global_shop_items";
             referencedColumns: ["id"];
           },
         ];
@@ -647,6 +783,97 @@ export interface Database {
           },
         ];
       };
+      profile_effects: {
+        Row: {
+          id: string;
+          group_id: string;
+          source_profile_id: string;
+          target_profile_id: string;
+          effect_type: string;
+          active_until: string;
+          metadata: Record<string, unknown>;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          group_id: string;
+          source_profile_id: string;
+          target_profile_id: string;
+          effect_type: string;
+          active_until: string;
+          metadata?: Record<string, unknown>;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          group_id?: string;
+          source_profile_id?: string;
+          target_profile_id?: string;
+          effect_type?: string;
+          active_until?: string;
+          metadata?: Record<string, unknown>;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "profile_effects_group_id_fkey";
+            columns: ["group_id"];
+            isOneToOne: false;
+            referencedRelation: "groups";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "profile_effects_source_profile_id_fkey";
+            columns: ["source_profile_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "profile_effects_target_profile_id_fkey";
+            columns: ["target_profile_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      quit_or_double_votes: {
+        Row: {
+          challenge_id: string;
+          voter_id: string;
+          approve: boolean;
+          created_at: string;
+        };
+        Insert: {
+          challenge_id: string;
+          voter_id: string;
+          approve?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          challenge_id?: string;
+          voter_id?: string;
+          approve?: boolean;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "quit_or_double_votes_challenge_id_fkey";
+            columns: ["challenge_id"];
+            isOneToOne: false;
+            referencedRelation: "challenges";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "quit_or_double_votes_voter_id_fkey";
+            columns: ["voter_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -659,7 +886,7 @@ export interface Database {
         Returns: boolean;
       };
       purchase_item: {
-        Args: { p_item_id: string };
+        Args: { p_item_id: string; p_group_id?: string };
         Returns: undefined;
       };
       get_my_group_shop_effective_prices: {
@@ -850,6 +1077,31 @@ export interface Database {
           reward: number;
           inventory_id: string;
         };
+      };
+      use_inventory_item_effect: {
+        Args: {
+          p_inventory_id: string;
+          p_challenge_id?: string;
+          p_target_profile_id?: string;
+          p_payload?: Record<string, unknown>;
+        };
+        Returns: Record<string, unknown>;
+      };
+      vote_quitte_ou_double: {
+        Args: { p_challenge_id: string; p_approve?: boolean };
+        Returns: Record<string, unknown>;
+      };
+      get_group_hidden_joker_counts: {
+        Args: { p_group_id: string };
+        Returns: {
+          profile_id: string;
+          username: string;
+          jokers_available: number;
+        }[];
+      };
+      is_profile_effect_active: {
+        Args: { p_group_id: string; p_profile_id: string; p_effect_type: string };
+        Returns: boolean;
       };
     };
     Enums: {

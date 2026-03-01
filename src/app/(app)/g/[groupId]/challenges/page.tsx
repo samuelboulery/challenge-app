@@ -3,7 +3,21 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChallengeCard } from "@/components/shared/challenge-card";
 import { CreateChallengeDialog } from "@/components/shared/create-challenge-dialog";
 import { getMyGroupChallenges } from "@/app/(app)/challenges/actions";
+import { getUserItemsByType } from "@/app/(app)/groups/[id]/shop-actions";
 import { createClient } from "@/lib/supabase/server";
+
+type CreationItemType =
+  | "quitte_ou_double"
+  | "cinquante_cinquante"
+  | "sniper"
+  | "roulette_russe";
+
+type CreationItemOption = {
+  inventoryId: string;
+  itemType: CreationItemType;
+  name: string;
+  purchasedAt: string;
+};
 
 function EmptyState() {
   return (
@@ -33,12 +47,17 @@ export default async function GroupChallengesPage({
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ received, sent }, { data: members }] = await Promise.all([
+  const [{ received, sent }, { data: members }, qodItems, fiftyItems, sniperItems, rouletteItems] =
+    await Promise.all([
     getMyGroupChallenges(groupId),
     supabase
       .from("members")
       .select("profile_id, profiles(username)")
       .eq("group_id", groupId),
+    getUserItemsByType(groupId, "quitte_ou_double"),
+    getUserItemsByType(groupId, "cinquante_cinquante"),
+    getUserItemsByType(groupId, "sniper"),
+    getUserItemsByType(groupId, "roulette_russe"),
   ]);
 
   const otherMembers = (members ?? [])
@@ -49,12 +68,46 @@ export default async function GroupChallengesPage({
         (m.profiles as { username: string } | null)?.username ?? "Utilisateur",
     }));
 
+  const buildCreationItems = (
+    rows: Awaited<ReturnType<typeof getUserItemsByType>>,
+    itemType: CreationItemType,
+  ): CreationItemOption[] =>
+    rows.map((row) => ({
+      inventoryId: row.id,
+      itemType,
+      name: (row.shop_items as { name?: string } | null)?.name ?? itemType,
+      purchasedAt: row.purchased_at,
+    }));
+
+  const availableCreationItems = [
+    ...buildCreationItems(qodItems, "quitte_ou_double"),
+    ...buildCreationItems(fiftyItems, "cinquante_cinquante"),
+    ...buildCreationItems(sniperItems, "sniper"),
+    ...buildCreationItems(rouletteItems, "roulette_russe"),
+  ].sort(
+    (a, b) =>
+      new Date(a.purchasedAt).getTime() - new Date(b.purchasedAt).getTime(),
+  );
+
+  const currentUserId = user?.id ?? null;
+  const canOpenCreateDialog =
+    !!currentUserId &&
+    (otherMembers.length > 0 ||
+      availableCreationItems.some(
+        (item) => item.itemType === "quitte_ou_double" || item.itemType === "roulette_russe",
+      ));
+
   return (
     <main className="px-4 pt-8">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Défis du groupe</h1>
-        {otherMembers.length > 0 && (
-          <CreateChallengeDialog groupId={groupId} members={otherMembers} />
+        {canOpenCreateDialog && (
+          <CreateChallengeDialog
+            groupId={groupId}
+            members={otherMembers}
+            currentUserId={currentUserId}
+            availableCreationItems={availableCreationItems}
+          />
         )}
       </div>
 

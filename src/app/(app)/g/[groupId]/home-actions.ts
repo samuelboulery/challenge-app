@@ -41,6 +41,7 @@ export async function getGroupHomeData(groupId: string) {
       recentActivity: [],
       leaderboard: [],
       shopItems: [],
+      groupMembers: [],
       isAdmin: false,
       userId: null,
     };
@@ -58,6 +59,7 @@ export async function getGroupHomeData(groupId: string) {
     { data: seasonRows },
     shopItems,
     { data: currentMember },
+    { data: allMembers },
   ] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).single(),
 
@@ -137,6 +139,10 @@ export async function getGroupHomeData(groupId: string) {
       .eq("group_id", groupId)
       .eq("profile_id", user.id)
       .single(),
+    supabase
+      .from("members")
+      .select("profile_id, profiles(username)")
+      .eq("group_id", groupId),
   ]);
 
   const leaderboard = (leaderboardData ?? [])
@@ -230,6 +236,12 @@ export async function getGroupHomeData(groupId: string) {
     seasonKey: activeSeason?.season_key ?? null,
     crownHolderProfileId: activeSeason?.crown_holder_profile_id ?? null,
     shopItems,
+    groupMembers:
+      (allMembers ?? []).map((member) => ({
+        id: member.profile_id,
+        username:
+          (member.profiles as { username: string } | null)?.username ?? "Utilisateur",
+      })) ?? [],
     isAdmin,
     userId: user.id,
   };

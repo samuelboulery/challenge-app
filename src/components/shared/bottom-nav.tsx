@@ -105,7 +105,7 @@ export function BottomNav() {
               <div className="relative">
                 <Icon className="size-5" />
                 {showBadge && (
-                  <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
+                  <span className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] text-white font-bold text-destructive-foreground">
                     {unreadCount > 9 ? "9+" : unreadCount}
                   </span>
                 )}

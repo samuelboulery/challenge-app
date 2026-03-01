@@ -21,6 +21,8 @@ import {
   voteChallengePrice,
   getDeclineInfo,
   validateOwnProofWith493,
+  applyInventoryItemEffect,
+  voteQuitteOuDouble,
 } from "@/app/(app)/challenges/actions";
 import type { ChallengeStatus } from "@/types/database.types";
 import { Check, X, Clock, Trophy, Shield, Zap, AlertTriangle, ThumbsUp, ThumbsDown } from "lucide-react";
@@ -62,6 +64,16 @@ interface ChallengeActionsProps {
   canContest?: boolean;
   proofRejectionsCount?: number;
   available493Items?: { id: string }[];
+  noNegotiation?: boolean;
+  availableEffectItems?: { id: string; itemType: string; name: string }[];
+  challengeTargetId?: string;
+  doubleOrNothingInfo?: {
+    requested: boolean;
+    approved: boolean;
+    approvals: number;
+    threshold: number;
+    userVoted: boolean;
+  } | null;
 }
 
 type DeclineInfoState = {
@@ -86,6 +98,10 @@ export function ChallengeActions({
   canContest = true,
   proofRejectionsCount = 0,
   available493Items = [],
+  noNegotiation = false,
+  availableEffectItems = [],
+  challengeTargetId,
+  doubleOrNothingInfo = null,
 }: ChallengeActionsProps) {
   const [declineDialogOpen, setDeclineDialogOpen] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
@@ -102,6 +118,67 @@ export function ChallengeActions({
 
   const [isPending, startTransition] = useTransition();
   const hasFailedProofOnce = proofRejectionsCount >= 1;
+  const defenseItems = availableEffectItems.filter((item) =>
+    [
+      "gilet_pare_balles",
+      "mode_fantome",
+      "miroir_magique",
+      "patate_chaude",
+      "assurance",
+      "quitte_ou_double",
+    ].includes(item.itemType),
+  );
+  const attackItems = availableEffectItems.filter((item) =>
+    ["cinquante_cinquante", "menottes", "surcharge", "sniper", "embargo"].includes(item.itemType),
+  );
+  const chaosItems = availableEffectItems.filter((item) =>
+    ["roulette_russe", "robin_des_bois", "amnesie", "mouchard"].includes(item.itemType),
+  );
+  const creatorProposedAttackItems = attackItems.filter(
+    (item) =>
+      item.itemType !== "surcharge" &&
+      item.itemType !== "menottes" &&
+      item.itemType !== "embargo",
+  );
+  const creatorNegotiatingItems = attackItems.filter((item) => item.itemType === "surcharge");
+
+  const handleUseItem = (
+    inventoryId: string,
+    options?: {
+      targetProfileId?: string;
+      payload?: Record<string, unknown>;
+      includeChallengeId?: boolean;
+    },
+  ) => {
+    startTransition(async () => {
+      const result = await applyInventoryItemEffect({
+        inventoryId,
+        challengeId: options?.includeChallengeId === false ? undefined : challengeId,
+        targetProfileId: options?.targetProfileId,
+        payload: options?.payload,
+      });
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success("Effet appliqué");
+    });
+  };
+
+  const handleVoteQuitDouble = () => {
+    startTransition(async () => {
+      const result = await voteQuitteOuDouble(challengeId, true);
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
+      if (result.approved) {
+        toast.success("Quitte ou Double validé");
+      } else {
+        toast.success(`Vote enregistré (${result.approvals}/${result.threshold})`);
+      }
+    });
+  };
 
   const handleDeclineClick = () => {
     startTransition(async () => {
@@ -115,7 +192,13 @@ export function ChallengeActions({
         if ("error" in result) {
           toast.error(result.error);
         } else {
-          toast.success(`Défi refusé (${info.freeRemaining} refus gratuit${info.freeRemaining !== 1 ? "s" : ""} restant${info.freeRemaining !== 1 ? "s" : ""})`);
+          const remainingFreeDeclines = Math.max(
+            0,
+            result.freeDeclines ?? info.freeRemaining - 1,
+          );
+          toast.success(
+            `Défi refusé (${remainingFreeDeclines} refus gratuit${remainingFreeDeclines !== 1 ? "s" : ""} restant${remainingFreeDeclines !== 1 ? "s" : ""})`,
+          );
         }
       } else {
         setDeclineInfo(info);
@@ -374,6 +457,26 @@ export function ChallengeActions({
             <X className="mr-1 size-4" />
             {isPending ? "..." : "Annuler le défi"}
           </Button>
+          {creatorNegotiatingItems.length > 0 && (
+            <div className="rounded-lg border p-3 space-y-2">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Attaque
+              </p>
+              <div className="grid grid-cols-1 gap-2">
+                {creatorNegotiatingItems.map((item) => (
+                  <Button
+                    key={item.id}
+                    variant="outline"
+                    disabled={isPending}
+                    onClick={() => handleUseItem(item.id)}
+                    className="justify-start"
+                  >
+                    {item.name}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       );
     }
@@ -503,20 +606,53 @@ export function ChallengeActions({
               {isPending ? "..." : "Refuser"}
             </Button>
           </div>
-          {canContest ? (
+          {availableBoosters.length > 0 && (
             <Button
               variant="outline"
               className="w-full"
               disabled={isPending}
+              onClick={() => handleAcceptConfirm(availableBoosters[0]?.id)}
+            >
+              <Zap className="mr-1 size-4 text-yellow-500" />
+              {isPending
+                ? "..."
+                : `Accepter avec Booster x2 (${availableBoosters.length} dispo)`}
+            </Button>
+          )}
+          {canContest ? (
+            <Button
+              variant="outline"
+              className="w-full"
+              disabled={isPending || noNegotiation}
               onClick={handleContestClick}
             >
               <AlertTriangle className="mr-1 size-4" />
-              {isPending ? "..." : "Contester"}
+              {isPending ? "..." : noNegotiation ? "Sniper actif: non contestable" : "Contester"}
             </Button>
           ) : (
             <p className="text-xs text-muted-foreground">
               Contestation déjà utilisée pour ce défi. Tu peux accepter ou refuser.
             </p>
+          )}
+          {defenseItems.length > 0 && (
+            <div className="rounded-lg border p-3 space-y-2">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Défense & Économie
+              </p>
+              <div className="grid grid-cols-1 gap-2">
+                {defenseItems.map((item) => (
+                  <Button
+                    key={item.id}
+                    variant="outline"
+                    disabled={isPending}
+                    onClick={() => handleUseItem(item.id)}
+                    className="justify-start"
+                  >
+                    {item.name}
+                  </Button>
+                ))}
+              </div>
+            </div>
           )}
         </div>
 
@@ -632,6 +768,30 @@ export function ChallengeActions({
           <X className="mr-1 size-4" />
           {isPending ? "..." : "Annuler le défi"}
         </Button>
+        {creatorProposedAttackItems.length > 0 && (
+          <div className="rounded-lg border p-3 space-y-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Attaque
+            </p>
+            <div className="grid grid-cols-1 gap-2">
+              {creatorProposedAttackItems.map((item) => (
+                <Button
+                  key={item.id}
+                  variant="outline"
+                  disabled={isPending}
+                  onClick={() =>
+                    handleUseItem(item.id, {
+                      targetProfileId: challengeTargetId,
+                    })
+                  }
+                  className="justify-start"
+                >
+                  {item.name}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -727,6 +887,33 @@ export function ChallengeActions({
               </ResponsivePanelFooter>
             </ResponsivePanelContent>
           </ResponsivePanel>
+        )}
+        {defenseItems.length > 0 && (
+          <div className="rounded-lg border p-3 space-y-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Défense active
+            </p>
+            <div className="grid grid-cols-1 gap-2">
+              {defenseItems
+                .filter(
+                  (item) =>
+                    item.itemType === "assurance" ||
+                    item.itemType === "quitte_ou_double" ||
+                    item.itemType === "gilet_pare_balles",
+                )
+                .map((item) => (
+                  <Button
+                    key={item.id}
+                    variant="outline"
+                    disabled={isPending}
+                    onClick={() => handleUseItem(item.id)}
+                    className="justify-start"
+                  >
+                    {item.name}
+                  </Button>
+                ))}
+            </div>
+          </div>
         )}
       </div>
     );
@@ -844,6 +1031,62 @@ export function ChallengeActions({
             ))}
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (!isCreator && !isTarget && status === "proposed" && doubleOrNothingInfo?.requested) {
+    return (
+      <div className="space-y-3">
+        <div className="rounded-lg border p-3 text-sm">
+          <p className="font-medium">Validation Quitte ou Double</p>
+          <p className="text-muted-foreground">
+            {doubleOrNothingInfo.approved
+              ? "Mode validé par le groupe."
+              : `Votes: ${doubleOrNothingInfo.approvals}/${doubleOrNothingInfo.threshold}`}
+          </p>
+        </div>
+        {!doubleOrNothingInfo.approved && !doubleOrNothingInfo.userVoted && (
+          <Button className="w-full" disabled={isPending} onClick={handleVoteQuitDouble}>
+            Valider Quitte ou Double
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  if (chaosItems.length > 0) {
+    return (
+      <div className="space-y-3">
+        <div className="rounded-lg border p-3 space-y-2">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Chaos
+          </p>
+          <div className="grid grid-cols-1 gap-2">
+            {chaosItems.map((item) => (
+              <Button
+                key={item.id}
+                variant="outline"
+                disabled={isPending}
+                onClick={() =>
+                  handleUseItem(item.id, {
+                    payload:
+                      item.itemType === "roulette_russe"
+                        ? {
+                            title: "Roulette Russe",
+                            description: "Défi aléatoire généré par l'item Roulette Russe",
+                            points: Math.max(100, points),
+                          }
+                        : undefined,
+                  })
+                }
+                className="justify-start"
+              >
+                {item.name}
+              </Button>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }

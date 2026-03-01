@@ -28,6 +28,7 @@ interface ChallengeCardProps {
   targetName: string;
   groupName?: string;
   groupId?: string;
+  compact?: boolean;
 }
 
 export function ChallengeCard({
@@ -39,6 +40,7 @@ export function ChallengeCard({
   targetName,
   groupName,
   groupId,
+  compact = false,
 }: ChallengeCardProps) {
   const config = STATUS_CONFIG[status];
   const href = groupId
@@ -47,8 +49,14 @@ export function ChallengeCard({
 
   return (
     <Link href={href} className="block">
-      <Card className="transition-colors hover:bg-accent/50">
-        <CardContent className="flex items-center justify-between py-3 sm:py-4">
+      <Card className={compact ? "py-0 transition-colors hover:bg-accent/50" : "transition-colors hover:bg-accent/50"}>
+        <CardContent
+          className={
+            compact
+              ? "flex items-center justify-between py-2 sm:py-2.5"
+              : "flex items-center justify-between py-3 sm:py-4"
+          }
+        >
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <h3 className="truncate text-sm font-semibold sm:text-base">{title}</h3>
@@ -56,10 +64,22 @@ export function ChallengeCard({
                 {config.label}
               </Badge>
             </div>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground sm:mt-1 sm:text-sm">
+            <p
+              className={
+                compact
+                  ? "mt-0 truncate text-xs text-muted-foreground sm:text-sm"
+                  : "mt-0.5 truncate text-xs text-muted-foreground sm:mt-1 sm:text-sm"
+              }
+            >
               {creatorName} → {targetName}
             </p>
-            <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground sm:mt-1 sm:gap-3 sm:text-xs">
+            <div
+              className={
+                compact
+                  ? "mt-0 flex items-center gap-2 text-[11px] text-muted-foreground sm:gap-3 sm:text-xs"
+                  : "mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground sm:mt-1 sm:gap-3 sm:text-xs"
+              }
+            >
               <span className="flex items-center gap-1">
                 <Coins className="size-3.5" />
                 {points} pts

@@ -47,8 +47,7 @@ export function AddShopItemDialog({ groupId }: AddShopItemDialogProps) {
           <ResponsivePanelTitle>Ajouter un item personnalisé</ResponsivePanelTitle>
           <ResponsivePanelDescription>
             Crée un item custom que les membres pourront acheter avec leurs
-            points. Les items spéciaux (Joker, Booster, Voleur) sont déjà
-            disponibles automatiquement.
+            points. Les items spéciaux sont déjà disponibles automatiquement.
           </ResponsivePanelDescription>
         </ResponsivePanelHeader>
         <form action={formAction}>

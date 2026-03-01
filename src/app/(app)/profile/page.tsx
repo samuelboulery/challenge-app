@@ -4,9 +4,9 @@ import { getMyInventory } from "@/app/(app)/groups/[id]/shop-actions";
 import { getAllBadges, getMyBadges, getBadgeProgress } from "./badge-actions";
 import { EditProfileDialog } from "./edit-profile-dialog";
 import { PushToggle } from "@/app/(app)/notifications/push-toggle";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { BadgeGrid } from "./badge-grid";
@@ -14,41 +14,35 @@ import {
   Coins,
   Package,
   Award,
-  Shield,
-  Zap,
-  Skull,
-  Crown,
   CheckCircle2,
   Circle,
 } from "lucide-react";
-
-const ITEM_TYPE_CONFIG: Record<
-  string,
-  { label: string; icon: typeof Shield; className: string }
-> = {
-  joker: {
-    label: "Joker",
-    icon: Shield,
-    className: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
-  },
-  booster: {
-    label: "Booster",
-    icon: Zap,
-    className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300",
-  },
-  voleur: {
-    label: "Voleur",
-    icon: Skull,
-    className: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
-  },
-  item_49_3: {
-    label: "49.3",
-    icon: Crown,
-    className: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300",
-  },
-};
+import { StoreItemCategoryBadge } from "@/components/shared/store-item-category-badge";
 
 type InventoryItem = Awaited<ReturnType<typeof getMyInventory>>[number];
+
+function getItemUsageHint(itemType: string): { status: string; cta: "open-challenges" | null } {
+  if (itemType === "voleur") {
+    return { status: "Utilisation immédiate à l'achat", cta: null };
+  }
+  if (itemType === "custom") {
+    return { status: "Item personnalisé (pas d'effet consommable standard)", cta: null };
+  }
+  if (itemType === "joker") {
+    return { status: "Utilisable au refus/annulation d'un défi", cta: "open-challenges" };
+  }
+  if (itemType === "booster") {
+    return { status: "Utilisable à l'acceptation d'un défi", cta: "open-challenges" };
+  }
+  if (itemType === "item_49_3") {
+    return { status: "Utilisable après soumission de preuve", cta: "open-challenges" };
+  }
+  if (itemType === "surcharge") {
+    return { status: "Utilisable pendant une contestation en cours", cta: "open-challenges" };
+  }
+
+  return { status: "Utilisable dans un contexte de défi", cta: "open-challenges" };
+}
 
 function groupByGroupName(items: InventoryItem[]) {
   const groups: Record<string, { groupName: string; items: InventoryItem[] }> = {};
@@ -192,11 +186,10 @@ export default async function ProfilePage() {
                       groups: { name: string } | null;
                     } | null;
 
-                    const typeConfig = shopItem
-                      ? ITEM_TYPE_CONFIG[shopItem.item_type]
-                      : undefined;
                     const isUsed = !!item.used_at;
-                    const TypeIcon = typeConfig?.icon;
+                    const itemType = shopItem?.item_type ?? "custom";
+                    const usageHint = getItemUsageHint(itemType);
+                    const groupId = shopItem?.group_id ?? null;
 
                     return (
                       <div
@@ -216,26 +209,33 @@ export default async function ProfilePage() {
                               <p className="font-medium truncate">
                                 {shopItem?.name ?? "Item inconnu"}
                               </p>
-                              {typeConfig && TypeIcon && (
-                                <Badge
-                                  variant="secondary"
-                                  className={`text-xs shrink-0 ${typeConfig.className}`}
-                                >
-                                  <TypeIcon className="mr-0.5 size-3" />
-                                  {typeConfig.label}
-                                </Badge>
-                              )}
+                              <StoreItemCategoryBadge itemType={itemType} className="text-xs" />
                             </div>
                             <p className="text-xs text-muted-foreground">
                               {isUsed && item.used_at
                                 ? `Utilisé le ${new Date(item.used_at).toLocaleDateString("fr-FR")}`
                                 : "Disponible"}
                             </p>
+                            {!isUsed && (
+                              <p className="text-xs text-muted-foreground">
+                                {usageHint.status}
+                              </p>
+                            )}
                           </div>
                         </div>
-                        <p className="text-xs text-muted-foreground shrink-0 ml-2">
-                          {new Date(item.purchased_at).toLocaleDateString("fr-FR")}
-                        </p>
+                        <div className="shrink-0 ml-2 flex flex-col items-end gap-1">
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(item.purchased_at).toLocaleDateString("fr-FR")}
+                          </p>
+                          {!isUsed && usageHint.cta === "open-challenges" && groupId && (
+                            <Link
+                              href={`/g/${groupId}/challenges`}
+                              className="text-xs text-primary underline-offset-2 hover:underline"
+                            >
+                              Ouvrir les défis
+                            </Link>
+                          )}
+                        </div>
                       </div>
                     );
                   })}

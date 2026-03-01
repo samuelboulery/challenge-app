@@ -7,6 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { ChallengeActions } from "@/components/shared/challenge-actions";
 import { SubmitProofForm } from "@/components/shared/submit-proof-form";
 import { getUserItemsByType } from "@/app/(app)/groups/[id]/shop-actions";
+import { getMyEffectItems } from "@/app/(app)/groups/[id]/shop-actions";
 import {
   getChallengeVotes,
   getChallengePriceState,
@@ -66,6 +67,7 @@ export default async function GroupChallengeDetailPage({
 
   let availableBoosters: { id: string }[] = [];
   let available493: { id: string }[] = [];
+  let availableEffectItems: { id: string; itemType: string; name: string }[] = [];
   if (challenge.status === "proposed" && isTarget) {
     const boosters = await getUserItemsByType(groupId, "booster");
     availableBoosters = boosters.map((b) => ({ id: b.id }));
@@ -74,10 +76,20 @@ export default async function GroupChallengeDetailPage({
     const items493 = await getUserItemsByType(groupId, "item_49_3");
     available493 = items493.map((item) => ({ id: item.id }));
   }
+  if (user) {
+    availableEffectItems = await getMyEffectItems(groupId);
+  }
 
   let voteInfo = null;
   let priceState = null;
   let isMember = false;
+  let doubleOrNothingInfo: {
+    requested: boolean;
+    approved: boolean;
+    approvals: number;
+    threshold: number;
+    userVoted: boolean;
+  } | null = null;
 
   if (user) {
     const { data: membership } = await supabase
@@ -101,6 +113,39 @@ export default async function GroupChallengeDetailPage({
     if (!("error" in pricing)) {
       priceState = pricing;
     }
+  }
+
+  if (challenge.double_or_nothing_requested) {
+    const [{ count: approvalsCount }, { data: myVote }, { count: validatorsCount }] =
+      await Promise.all([
+        supabase
+          .from("quit_or_double_votes")
+          .select("challenge_id", { count: "exact", head: true })
+          .eq("challenge_id", challenge.id)
+          .eq("approve", true),
+        user
+          ? supabase
+              .from("quit_or_double_votes")
+              .select("challenge_id")
+              .eq("challenge_id", challenge.id)
+              .eq("voter_id", user.id)
+              .maybeSingle()
+          : Promise.resolve({ data: null } as { data: null }),
+        supabase
+          .from("members")
+          .select("profile_id", { count: "exact", head: true })
+          .eq("group_id", groupId)
+          .neq("profile_id", challenge.creator_id)
+          .neq("profile_id", challenge.target_id),
+      ]);
+
+    doubleOrNothingInfo = {
+      requested: true,
+      approved: challenge.double_or_nothing_approved,
+      approvals: approvalsCount ?? 0,
+      threshold: Math.min(2, Math.max(1, validatorsCount ?? 1)),
+      userVoted: !!myVote,
+    };
   }
 
   const { data: proofs } = await supabase
@@ -180,6 +225,10 @@ export default async function GroupChallengeDetailPage({
         canContest={!challenge.contested_once}
         proofRejectionsCount={challenge.proof_rejections_count ?? 0}
         available493Items={available493}
+        noNegotiation={challenge.no_negotiation}
+        availableEffectItems={availableEffectItems}
+        challengeTargetId={challenge.target_id}
+        doubleOrNothingInfo={doubleOrNothingInfo}
       />
 
       {challenge.status === "accepted" && isTarget && (

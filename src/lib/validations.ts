@@ -1,29 +1,119 @@
 import { z } from "zod";
+import { STORE_ITEM_TYPES } from "@/lib/store-item-types";
 
 const MAX_TEXT = 500;
 const MAX_NAME = 100;
 const CHALLENGE_PRESET_POINTS = [5, 10, 25, 50, 75, 100, 150] as const;
+const CREATION_ITEM_TYPES = [
+  "quitte_ou_double",
+  "cinquante_cinquante",
+  "sniper",
+  "roulette_russe",
+] as const;
 
 const uuid = z.string().uuid("ID invalide");
 
-export const createChallengeSchema = z.object({
-  groupId: uuid,
-  targetIds: z
-    .array(uuid)
-    .min(1, "Sélectionne au moins une cible")
-    .refine((ids) => new Set(ids).size === ids.length, "Les cibles doivent être uniques"),
-  title: z.string().min(1, "Le titre est requis").max(MAX_NAME, `${MAX_NAME} caractères max`),
-  description: z.string().max(MAX_TEXT).nullable(),
-  points: z
-    .number()
-    .int()
-    .refine(
-      (value) =>
-        (CHALLENGE_PRESET_POINTS as readonly number[]).includes(value),
-      "Valeur de points invalide",
-    ),
-  deadline: z.string().nullable(),
-});
+export const createChallengeSchema = z
+  .object({
+    groupId: uuid,
+    targetIds: z
+      .array(uuid)
+      .refine((ids) => new Set(ids).size === ids.length, "Les cibles doivent être uniques"),
+    title: z.string().min(1, "Le titre est requis").max(MAX_NAME, `${MAX_NAME} caractères max`),
+    description: z.string().max(MAX_TEXT).nullable(),
+    points: z
+      .number()
+      .int()
+      .refine(
+        (value) =>
+          (CHALLENGE_PRESET_POINTS as readonly number[]).includes(value),
+        "Valeur de points invalide",
+      ),
+    deadline: z.string().nullable(),
+    selectedItemInventoryId: uuid.nullable().optional(),
+    selectedItemType: z.enum(CREATION_ITEM_TYPES).nullable().optional(),
+    fiftyFiftyTitle: z.string().max(MAX_NAME, `${MAX_NAME} caractères max`).nullable().optional(),
+    fiftyFiftyDescription: z.string().max(MAX_TEXT).nullable().optional(),
+    fiftyFiftyPoints: z
+      .number()
+      .int()
+      .refine(
+        (value) =>
+          (CHALLENGE_PRESET_POINTS as readonly number[]).includes(value),
+        "Valeur de points invalide",
+      )
+      .nullable()
+      .optional(),
+    fiftyFiftyDeadline: z.string().nullable().optional(),
+  })
+  .superRefine((data, ctx) => {
+    const hasItemId = !!data.selectedItemInventoryId;
+    const hasItemType = !!data.selectedItemType;
+    if (hasItemId !== hasItemType) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Sélection d'item invalide",
+        path: ["selectedItemInventoryId"],
+      });
+    }
+
+    const selectedType = data.selectedItemType;
+    if (selectedType === "roulette_russe") {
+      if (data.targetIds.length > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Roulette Russe ne nécessite pas de cible manuelle",
+          path: ["targetIds"],
+        });
+      }
+      return;
+    }
+
+    if (data.targetIds.length < 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Sélectionne au moins une cible",
+        path: ["targetIds"],
+      });
+      return;
+    }
+
+    if (selectedType === "quitte_ou_double" && data.targetIds.length !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Quitte ou Double est disponible uniquement pour une cible unique",
+        path: ["selectedItemType"],
+      });
+    }
+
+    if (
+      (selectedType === "cinquante_cinquante" || selectedType === "sniper") &&
+      data.targetIds.length !== 1
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Cet item nécessite une cible unique",
+        path: ["targetIds"],
+      });
+    }
+
+    if (selectedType === "cinquante_cinquante") {
+      if (!data.fiftyFiftyTitle || data.fiftyFiftyTitle.trim().length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Le titre de l'option 2 est requis pour 50/50",
+          path: ["fiftyFiftyTitle"],
+        });
+      }
+      if (data.fiftyFiftyPoints == null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Les points de l'option 2 sont requis pour 50/50",
+          path: ["fiftyFiftyPoints"],
+        });
+      }
+    }
+  });
 
 export const submitProofSchema = z.object({
   challengeId: uuid,
@@ -85,7 +175,7 @@ export const addShopItemSchema = z.object({
   description: z.string().max(MAX_TEXT).nullable(),
   price: z.number().int().min(1, "Le prix doit être positif").max(100_000),
   stock: z.number().int().min(0).nullable(),
-  itemType: z.enum(["custom", "joker", "booster", "voleur"]).default("custom"),
+  itemType: z.enum(STORE_ITEM_TYPES).default("custom"),
 });
 
 export const updateShopItemSchema = z.object({
@@ -139,6 +229,13 @@ export const contestChallengeSchema = z.object({
   challengeId: uuid,
 });
 
+export const applyInventoryItemEffectSchema = z.object({
+  inventoryId: uuid,
+  challengeId: uuid.optional(),
+  targetProfileId: uuid.optional(),
+  payload: z.record(z.string(), z.unknown()).optional(),
+});
+
 export const creatorDecideCounterProposalSchema = z.object({
   challengeId: uuid,
   action: z.enum(["accept", "counter"], { message: "Action invalide" }),
@@ -178,6 +275,9 @@ export function parseFormData<T extends z.ZodType>(
 
   if ("price" in raw && raw.price !== null) raw.price = Number(raw.price);
   if ("points" in raw && raw.points !== null) raw.points = Number(raw.points);
+  if ("fiftyFiftyPoints" in raw && raw.fiftyFiftyPoints !== null) {
+    raw.fiftyFiftyPoints = Number(raw.fiftyFiftyPoints);
+  }
   if ("newPoints" in raw && raw.newPoints !== null) raw.newPoints = Number(raw.newPoints);
   if ("stock" in raw && raw.stock !== null) raw.stock = Number(raw.stock);
 

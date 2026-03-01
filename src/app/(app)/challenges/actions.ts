@@ -9,12 +9,14 @@ import {
   voteOnChallengeSchema,
   voteChallengePriceSchema,
   contestChallengeSchema,
+  applyInventoryItemEffectSchema,
   creatorDecideCounterProposalSchema,
   cancelChallengeByCreatorSchema,
   parseFormData,
 } from "@/lib/validations";
 import { notify } from "@/lib/notifications";
 import { awardBadges } from "@/lib/badges";
+import type { StoreItemType } from "@/lib/store-item-types";
 
 type ServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -75,6 +77,36 @@ export async function createChallenge(formData: FormData) {
     description: typeof descriptionRaw === "string" && descriptionRaw !== "" ? descriptionRaw : null,
     points: Number(formData.get("points")),
     deadline: typeof deadlineRaw === "string" && deadlineRaw !== "" ? deadlineRaw : null,
+    selectedItemInventoryId:
+      typeof formData.get("selectedItemInventoryId") === "string" &&
+      formData.get("selectedItemInventoryId") !== ""
+        ? String(formData.get("selectedItemInventoryId"))
+        : null,
+    selectedItemType:
+      typeof formData.get("selectedItemType") === "string" &&
+      formData.get("selectedItemType") !== ""
+        ? String(formData.get("selectedItemType"))
+        : null,
+    fiftyFiftyTitle:
+      typeof formData.get("fiftyFiftyTitle") === "string" &&
+      formData.get("fiftyFiftyTitle") !== ""
+        ? String(formData.get("fiftyFiftyTitle"))
+        : null,
+    fiftyFiftyDescription:
+      typeof formData.get("fiftyFiftyDescription") === "string" &&
+      formData.get("fiftyFiftyDescription") !== ""
+        ? String(formData.get("fiftyFiftyDescription"))
+        : null,
+    fiftyFiftyPoints:
+      typeof formData.get("fiftyFiftyPoints") === "string" &&
+      formData.get("fiftyFiftyPoints") !== ""
+        ? Number(formData.get("fiftyFiftyPoints"))
+        : null,
+    fiftyFiftyDeadline:
+      typeof formData.get("fiftyFiftyDeadline") === "string" &&
+      formData.get("fiftyFiftyDeadline") !== ""
+        ? String(formData.get("fiftyFiftyDeadline"))
+        : null,
   };
   const parsed = createChallengeSchema.safeParse(raw);
   if (!parsed.success) {
@@ -88,41 +120,239 @@ export async function createChallenge(formData: FormData) {
 
   if (!user) return { error: "Non authentifié" };
 
-  if (parsed.data.targetIds.some((targetId) => targetId === user.id)) {
-    return { error: "Tu ne peux pas te défier toi-même" };
+  const selectedItemType = parsed.data.selectedItemType ?? null;
+  const selectedItemInventoryId = parsed.data.selectedItemInventoryId ?? null;
+  const useQuitOrDouble = selectedItemType === "quitte_ou_double";
+
+  if (useQuitOrDouble) {
+    if (parsed.data.targetIds.length !== 1 || parsed.data.targetIds[0] !== user.id) {
+      return { error: "Quitte ou Double nécessite un auto-défi (toi comme cible unique)" };
+    }
+  } else if (parsed.data.targetIds.some((targetId) => targetId === user.id)) {
+    return { error: "Tu ne peux pas te défier toi-même sans Quitte ou Double" };
   }
 
+  if (selectedItemType && !selectedItemInventoryId) {
+    return { error: "Item sélectionné invalide" };
+  }
+
+  let resolvedItemType: string | null = null;
+  if (selectedItemInventoryId) {
+    const { data: selectedInventory } = await supabase
+      .from("inventory")
+      .select("id, purchased_group_id, shop_items(item_type, group_id), global_shop_items(item_type)")
+      .eq("id", selectedItemInventoryId)
+      .eq("profile_id", user.id)
+      .is("used_at", null)
+      .maybeSingle();
+
+    const localShopItem = selectedInventory?.shop_items as {
+      item_type: string;
+      group_id: string;
+    } | null;
+    const globalShopItem = selectedInventory?.global_shop_items as { item_type: string } | null;
+    const localType = localShopItem?.item_type ?? null;
+    const globalType = globalShopItem?.item_type ?? null;
+    resolvedItemType = localType ?? globalType;
+
+    const isValidForGroup =
+      (localType && localShopItem?.group_id === parsed.data.groupId) ||
+      (globalType && selectedInventory?.purchased_group_id === parsed.data.groupId);
+    if (!selectedInventory || !resolvedItemType || !isValidForGroup) {
+      return { error: "Item de création introuvable ou invalide pour ce groupe" };
+    }
+    if (selectedItemType && resolvedItemType !== selectedItemType) {
+      return { error: "L'item sélectionné ne correspond pas à l'inventaire choisi" };
+    }
+  }
+
+  const effectiveItemType = selectedItemType ?? resolvedItemType;
   const { data: profile } = await supabase
     .from("profiles")
     .select("username")
     .eq("id", user.id)
     .single();
 
-  const { data, error } = await supabase.rpc("create_challenges_bulk", {
-    p_group_id: parsed.data.groupId,
-    p_target_ids: parsed.data.targetIds,
-    p_title: parsed.data.title,
-    p_description: parsed.data.description ?? null,
-    p_points: parsed.data.points,
-    p_deadline: parsed.data.deadline ?? null,
-  });
-  if (error) {
-    if (error.message.includes("Non-member target")) {
-      return { error: "Une ou plusieurs cibles ne sont pas membres du groupe" };
+  let createdChallenges: { challenge_id: string; target_id: string }[] = [];
+  if (effectiveItemType === "roulette_russe") {
+    if (!selectedItemInventoryId) {
+      return { error: "Item Roulette Russe introuvable" };
     }
-    if (error.message.includes("Cannot target yourself")) {
-      return { error: "Tu ne peux pas te défier toi-même" };
+    const { data: roulettePayload, error: rouletteError } = await supabase.rpc(
+      "use_inventory_item_effect",
+      {
+        p_inventory_id: selectedItemInventoryId,
+        p_payload: {
+          title: parsed.data.title,
+          description: parsed.data.description ?? null,
+          points: parsed.data.points,
+          deadline: parsed.data.deadline,
+        },
+      },
+    );
+    if (rouletteError) {
+      if (rouletteError.message.includes("Roulette challenge title required")) {
+        return { error: "Titre requis pour Roulette Russe" };
+      }
+      if (rouletteError.message.includes("No eligible target for roulette")) {
+        return { error: "Aucune cible éligible pour Roulette Russe" };
+      }
+      return { error: rouletteError.message };
     }
-    if (error.message.includes("Not a group member")) {
+    const altChallengeId = (roulettePayload as { alt_challenge_id?: string } | null)
+      ?.alt_challenge_id;
+    if (!altChallengeId) {
+      return { error: "Impossible de créer le défi Roulette Russe" };
+    }
+    const { data: rouletteChallenge } = await supabase
+      .from("challenges")
+      .select("id, target_id")
+      .eq("id", altChallengeId)
+      .maybeSingle();
+    if (!rouletteChallenge) {
+      return { error: "Défi Roulette Russe créé mais introuvable" };
+    }
+    createdChallenges = [
+      { challenge_id: rouletteChallenge.id, target_id: rouletteChallenge.target_id },
+    ];
+  } else if (useQuitOrDouble) {
+    const [{ data: membership }, { data: handcuffs }] = await Promise.all([
+      supabase
+        .from("members")
+        .select("profile_id")
+        .eq("group_id", parsed.data.groupId)
+        .eq("profile_id", user.id)
+        .maybeSingle(),
+      supabase
+        .from("profile_effects")
+        .select("id")
+        .eq("group_id", parsed.data.groupId)
+        .eq("target_profile_id", user.id)
+        .eq("effect_type", "handcuffs")
+        .gt("active_until", new Date().toISOString())
+        .limit(1),
+    ]);
+
+    if (!membership) {
       return { error: "Tu ne fais pas partie de ce groupe" };
     }
-    return { error: error.message };
+    if ((handcuffs ?? []).length > 0) {
+      return { error: "Tu es sous l'effet des menottes et ne peux pas lancer de défi" };
+    }
+
+    const { data: createdSelfChallenge, error: createSelfError } = await supabase
+      .from("challenges")
+      .insert({
+        group_id: parsed.data.groupId,
+        creator_id: user.id,
+        target_id: user.id,
+        title: parsed.data.title,
+        description: parsed.data.description ?? null,
+        points: parsed.data.points,
+        deadline: parsed.data.deadline ?? null,
+      })
+      .select("id, target_id")
+      .single();
+
+    if (createSelfError || !createdSelfChallenge) {
+      return { error: createSelfError?.message ?? "Impossible de créer le défi auto-ciblé" };
+    }
+
+    createdChallenges = [{
+      challenge_id: createdSelfChallenge.id,
+      target_id: createdSelfChallenge.target_id,
+    }];
+  } else {
+    const { data, error } = await supabase.rpc("create_challenges_bulk", {
+      p_group_id: parsed.data.groupId,
+      p_target_ids: parsed.data.targetIds,
+      p_title: parsed.data.title,
+      p_description: parsed.data.description ?? null,
+      p_points: parsed.data.points,
+      p_deadline: parsed.data.deadline ?? null,
+    });
+    if (error) {
+      if (error.message.includes("Non-member target")) {
+        return { error: "Une ou plusieurs cibles ne sont pas membres du groupe" };
+      }
+      if (error.message.includes("Cannot target yourself")) {
+        return { error: "Tu ne peux pas te défier toi-même sans Quitte ou Double" };
+      }
+      if (error.message.includes("Not a group member")) {
+        return { error: "Tu ne fais pas partie de ce groupe" };
+      }
+      if (error.message.includes("Creator is handcuffed")) {
+        return { error: "Tu es sous l'effet des menottes et ne peux pas lancer de défi" };
+      }
+      if (error.message.includes("Target in ghost mode")) {
+        return { error: "Une cible est en mode fantôme et ne peut pas être défiée" };
+      }
+      return { error: error.message };
+    }
+    createdChallenges = (data ?? []) as { challenge_id: string; target_id: string }[];
   }
+
+  if (effectiveItemType === "quitte_ou_double") {
+    const createdChallengeId = createdChallenges[0]?.challenge_id;
+
+    if (!createdChallengeId) {
+      return { error: "Impossible d'activer Quitte ou Double sur ce défi" };
+    }
+    if (!selectedItemInventoryId) {
+      return { error: "Aucun item Quitte ou Double disponible pour ce groupe" };
+    }
+    const { error: effectError } = await supabase.rpc("use_inventory_item_effect", {
+      p_inventory_id: selectedItemInventoryId,
+      p_challenge_id: createdChallengeId,
+      p_payload: {},
+    });
+    if (effectError) {
+      return { error: `Défi créé, mais activation de Quitte ou Double impossible: ${effectError.message}` };
+    }
+  }
+
+  if (effectiveItemType === "sniper" || effectiveItemType === "cinquante_cinquante") {
+    const createdChallengeId = createdChallenges[0]?.challenge_id;
+    if (!createdChallengeId) {
+      return { error: "Impossible d'appliquer l'item sélectionné sur ce défi" };
+    }
+    if (!selectedItemInventoryId) {
+      return { error: "Item sélectionné introuvable" };
+    }
+    const payload =
+      effectiveItemType === "cinquante_cinquante"
+        ? {
+            title: parsed.data.fiftyFiftyTitle ?? `${parsed.data.title} (Option 2)`,
+            description: parsed.data.fiftyFiftyDescription ?? parsed.data.description,
+            points: parsed.data.fiftyFiftyPoints ?? parsed.data.points,
+            deadline: parsed.data.fiftyFiftyDeadline ?? parsed.data.deadline,
+          }
+        : {};
+    const { error: itemEffectError } = await supabase.rpc("use_inventory_item_effect", {
+      p_inventory_id: selectedItemInventoryId,
+      p_challenge_id: createdChallengeId,
+      p_payload: payload,
+    });
+    if (itemEffectError) {
+      if (itemEffectError.message.includes("Invalid challenge for 50/50")) {
+        return { error: "Défi créé, mais activation du 50/50 impossible dans ce contexte" };
+      }
+      if (itemEffectError.message.includes("50/50 already active")) {
+        return { error: "Défi créé, mais 50/50 est déjà actif sur ce défi" };
+      }
+      if (itemEffectError.message.includes("Invalid challenge for sniper")) {
+        return { error: "Défi créé, mais activation du Sniper impossible dans ce contexte" };
+      }
+      return { error: `Défi créé, mais activation de l'item échouée: ${itemEffectError.message}` };
+    }
+  }
+
+  await awardBadges(user.id);
 
   const { sendPushToUser } = await import("@/app/(app)/notifications/push-actions");
   const pushBody = `${profile?.username ?? "Quelqu'un"} t'a lancé le défi "${parsed.data.title}"`;
   await Promise.allSettled(
-    ((data ?? []) as { target_id: string }[]).map((item) =>
+    createdChallenges.map((item) =>
       sendPushToUser(item.target_id, "Nouveau défi !", pushBody),
     ),
   );
@@ -156,22 +386,34 @@ export async function acceptChallenge(
     }
     return { error: "Statut invalide pour cette action" };
   }
+  if (challenge.double_or_nothing_requested && !challenge.double_or_nothing_approved) {
+    return {
+      error: "Quitte ou Double en attente: il faut 2 validations de membres avant l'acceptation",
+    };
+  }
 
   if (boosterInventoryId) {
     const { data: booster } = await supabase
       .from("inventory")
-      .select("*, shop_items(item_type, group_id)")
+      .select("id, purchased_group_id, shop_items(item_type, group_id), global_shop_items(item_type)")
       .eq("id", boosterInventoryId)
       .eq("profile_id", user.id)
       .is("used_at", null)
       .single();
 
-    const shopItem = booster?.shop_items as {
+    const localShopItem = booster?.shop_items as {
       item_type: string;
       group_id: string;
     } | null;
+    const globalShopItem = booster?.global_shop_items as { item_type: string } | null;
+    const isLocalBooster =
+      localShopItem?.item_type === "booster" &&
+      localShopItem.group_id === challenge.group_id;
+    const isGlobalBooster =
+      globalShopItem?.item_type === "booster" &&
+      booster?.purchased_group_id === challenge.group_id;
 
-    if (!booster || shopItem?.item_type !== "booster" || shopItem?.group_id !== challenge.group_id) {
+    if (!booster || (!isLocalBooster && !isGlobalBooster)) {
       return { error: "Booster invalide" };
     }
 
@@ -189,6 +431,15 @@ export async function acceptChallenge(
       .from("challenges")
       .update({ status: "accepted" as ChallengeStatus })
       .eq("id", challengeId);
+  }
+
+  if (challenge.bundle_choice_required && challenge.challenge_bundle_id) {
+    await supabase
+      .from("challenges")
+      .update({ status: "cancelled" as ChallengeStatus })
+      .eq("challenge_bundle_id", challenge.challenge_bundle_id)
+      .neq("id", challengeId)
+      .eq("status", "proposed");
   }
 
   revalidatePath(`/g/${challenge.group_id}`);
@@ -210,10 +461,13 @@ export async function contestChallenge(challengeId: string) {
 
   const { data: challenge } = await supabase
     .from("challenges")
-    .select("group_id, creator_id, target_id, title")
+    .select("group_id, creator_id, target_id, title, no_negotiation")
     .eq("id", challengeId)
     .single();
   if (!challenge) return { error: "Défi introuvable" };
+  if (challenge.no_negotiation) {
+    return { error: "Ce défi est en mode Sniper et ne peut pas être contesté" };
+  }
 
   const { data, error } = await supabase.rpc("start_challenge_contestation", {
     p_challenge_id: challengeId,
@@ -279,11 +533,25 @@ export async function declineChallenge(
 
   const { data: challenge } = await supabase
     .from("challenges")
-    .select("group_id, creator_id, title, points")
+    .select("group_id, creator_id, title, points, challenge_bundle_id, bundle_choice_required")
     .eq("id", challengeId)
     .single();
 
   if (!challenge) return { error: "Défi introuvable" };
+
+  if (challenge.bundle_choice_required && challenge.challenge_bundle_id) {
+    const { count } = await supabase
+      .from("challenges")
+      .select("id", { count: "exact", head: true })
+      .eq("challenge_bundle_id", challenge.challenge_bundle_id)
+      .eq("status", "proposed");
+    if ((count ?? 0) > 1) {
+      return {
+        error:
+          "Défi 50/50 actif: tu dois accepter l'une des options, pas refuser globalement",
+      };
+    }
+  }
 
   const { data: result, error } = await supabase.rpc("decline_with_penalty", {
     p_challenge_id: challengeId,
@@ -341,7 +609,7 @@ export async function getDeclineInfo(challengeId: string) {
 
   const weekStart = getWeekStart();
 
-  const [{ count: weeklyDeclines }, { data: jokers }] = await Promise.all([
+  const [{ count: weeklyDeclines }, { data: localJokers }, { data: globalJokers }] = await Promise.all([
     supabase
       .from("challenges")
       .select("id", { count: "exact", head: true })
@@ -356,10 +624,17 @@ export async function getDeclineInfo(challengeId: string) {
       .is("used_at", null)
       .eq("shop_items.item_type", "joker")
       .eq("shop_items.group_id", challenge.group_id),
+    supabase
+      .from("inventory")
+      .select("id, global_shop_items!inner(item_type), purchased_group_id")
+      .eq("profile_id", user.id)
+      .is("used_at", null)
+      .eq("purchased_group_id", challenge.group_id)
+      .eq("global_shop_items.item_type", "joker"),
   ]);
 
   const declines = weeklyDeclines ?? 0;
-  const availableJokers = jokers ?? [];
+  const availableJokers = [...(localJokers ?? []), ...(globalJokers ?? [])];
   const isFree = declines < 2;
   const penalty = isFree ? 0 : Math.max(1, Math.floor(challenge.points / 2));
 
@@ -797,6 +1072,81 @@ export async function voteChallengePrice(
   }
 
   return { success: true, ...payload };
+}
+
+export async function applyInventoryItemEffect(args: {
+  inventoryId: string;
+  challengeId?: string;
+  targetProfileId?: string;
+  payload?: Record<string, unknown>;
+}) {
+  const parsed = applyInventoryItemEffectSchema.safeParse(args);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Données invalides" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("use_inventory_item_effect", {
+    p_inventory_id: parsed.data.inventoryId,
+    p_challenge_id: parsed.data.challengeId,
+    p_target_profile_id: parsed.data.targetProfileId,
+    p_payload: parsed.data.payload ?? {},
+  });
+
+  if (error) {
+    if (error.message.includes("Invalid challenge")) {
+      return { error: "Cet item n'est pas applicable dans ce contexte de défi" };
+    }
+    if (error.message.includes("already active")) {
+      return { error: "Cet effet est déjà actif" };
+    }
+    if (error.message.includes("No transfer target found")) {
+      return { error: "Aucune cible valide disponible pour transférer le défi" };
+    }
+    if (error.message.includes("No active challenge to cancel")) {
+      return { error: "Aucun défi actif à annuler actuellement" };
+    }
+    if (error.message.includes("Roulette challenge title required")) {
+      return { error: "Titre requis pour Roulette Russe" };
+    }
+    return { error: error.message };
+  }
+
+  const payload = (data ?? {}) as { challenge_id?: string; alt_challenge_id?: string; item_type?: string };
+  if (parsed.data.challengeId) {
+    revalidatePath(`/g/*/challenges/${parsed.data.challengeId}`);
+  }
+  revalidatePath("/profile");
+  return {
+    success: true,
+    itemType: (payload.item_type ?? "custom") as StoreItemType,
+    altChallengeId: payload.alt_challenge_id,
+  };
+}
+
+export async function voteQuitteOuDouble(challengeId: string, approve = true) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("vote_quitte_ou_double", {
+    p_challenge_id: challengeId,
+    p_approve: approve,
+  });
+  if (error) {
+    if (error.message.includes("Not allowed to vote")) {
+      return { error: "Seuls les autres membres peuvent valider Quitte ou Double" };
+    }
+    if (error.message.includes("not requested")) {
+      return { error: "Quitte ou Double n'est pas activé sur ce défi" };
+    }
+    return { error: error.message };
+  }
+  const payload = (data ?? {}) as { approved?: boolean; approvals?: number; threshold?: number };
+  revalidatePath("/g");
+  return {
+    success: true,
+    approved: !!payload.approved,
+    approvals: payload.approvals ?? 0,
+    threshold: payload.threshold ?? 2,
+  };
 }
 
 export async function creatorDecideCounterProposal(

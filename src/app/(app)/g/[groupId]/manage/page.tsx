@@ -7,12 +7,18 @@ import { InviteCodeSection } from "@/app/(app)/groups/[id]/invite-code-section";
 import { LeaveGroupButton } from "@/app/(app)/groups/[id]/leave-group-button";
 import { ShopItemCard } from "@/components/shared/shop-item-card";
 import { AddShopItemDialog } from "@/components/shared/add-shop-item-dialog";
-import { getShopItems } from "@/app/(app)/groups/[id]/shop-actions";
+import {
+  getShopItems,
+  getGlobalItemsWithGroupState,
+  toggleGlobalItemForGroup,
+} from "@/app/(app)/groups/[id]/shop-actions";
 import { Leaderboard } from "@/components/shared/leaderboard";
 import { GroupSwitcher } from "@/components/shared/group-switcher";
 import { getMyGroups } from "@/app/(app)/groups/actions";
 import { GroupAdminActions } from "@/app/(app)/groups/[id]/group-admin-actions";
 import { ShoppingBag, Trophy, Users } from "lucide-react";
+import { groupShopItemsByCategory } from "@/lib/shop-grouping";
+import { Button } from "@/components/ui/button";
 
 const ROLE_CONFIG = {
   owner: { label: "Fondateur", variant: "default" as const },
@@ -44,6 +50,7 @@ export default async function GroupManagePage({
     ,
     { data: members },
     shopItems,
+    globalItemsState,
     allGroups,
     { data: leaderboardData },
     { data: profileTitlesData },
@@ -59,6 +66,7 @@ export default async function GroupManagePage({
         .eq("group_id", groupId)
         .order("joined_at", { ascending: true }),
       getShopItems(groupId),
+      getGlobalItemsWithGroupState(groupId),
       getMyGroups(),
       supabase.rpc("get_group_all_time_leaderboard", {
         p_group_id: groupId,
@@ -140,13 +148,15 @@ export default async function GroupManagePage({
           {isAdmin && <AddShopItemDialog groupId={groupId} />}
         </div>
         {(() => {
-          const specialItems = shopItems.filter((i) => i.item_type !== "custom");
-          const customItems = shopItems.filter((i) => i.item_type === "custom");
+          const groupedItems = groupShopItemsByCategory(shopItems);
           return (
             <div className="space-y-4">
-              {specialItems.length > 0 && (
-                <div className="space-y-3">
-                  {specialItems.map((item) => (
+              {groupedItems.map((group) => (
+                <div key={group.category} className="space-y-3">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    {group.label}
+                  </p>
+                  {group.items.map((item) => (
                     <ShopItemCard
                       key={item.id}
                       id={item.id}
@@ -157,40 +167,50 @@ export default async function GroupManagePage({
                       stock={item.stock}
                       itemType={item.item_type}
                       isAdmin={isAdmin}
+                      groupMembers={(members ?? []).map((member) => ({
+                        id: member.profile_id,
+                        username:
+                          (member.profiles as { username: string } | null)?.username ??
+                          "Utilisateur",
+                      }))}
+                      currentUserId={user?.id}
                     />
                   ))}
                 </div>
-              )}
-              {customItems.length > 0 && (
-                <>
-                  {specialItems.length > 0 && (
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                      Items personnalisés
-                    </p>
-                  )}
-                  <div className="space-y-3">
-                    {customItems.map((item) => (
-                      <ShopItemCard
-                        key={item.id}
-                        id={item.id}
-                        groupId={groupId}
-                        name={item.name}
-                        description={item.description}
-                        price={item.price}
-                        stock={item.stock}
-                        itemType={item.item_type}
-                        isAdmin={isAdmin}
-                      />
-                    ))}
-                  </div>
-                </>
-              )}
-              {specialItems.length === 0 && customItems.length === 0 && (
+              ))}
+              {groupedItems.length === 0 && (
                 <div className="flex flex-col items-center gap-2 py-8 text-center">
                   <ShoppingBag className="size-6 text-muted-foreground" />
                   <p className="text-sm text-muted-foreground">
                     Aucun item en vente.
                   </p>
+                </div>
+              )}
+              {isAdmin && globalItemsState.length > 0 && (
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Activation des items communs
+                  </p>
+                  <div className="mt-3 space-y-2">
+                    {globalItemsState.map((item) => (
+                      <form key={item.id} action={toggleGlobalItemForGroup} className="flex items-center justify-between gap-2">
+                        <input type="hidden" name="groupId" value={groupId} />
+                        <input type="hidden" name="globalItemId" value={item.id} />
+                        <input
+                          type="hidden"
+                          name="enabled"
+                          value={item.enabled ? "false" : "true"}
+                        />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium">{item.name}</p>
+                          <p className="text-xs text-muted-foreground">{item.price} pts</p>
+                        </div>
+                        <Button type="submit" size="sm" variant={item.enabled ? "outline" : "default"}>
+                          {item.enabled ? "Désactiver" : "Activer"}
+                        </Button>
+                      </form>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

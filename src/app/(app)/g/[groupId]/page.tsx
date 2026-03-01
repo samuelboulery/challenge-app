@@ -1,5 +1,6 @@
 import { getGroupHomeData } from "./home-actions";
 import { getEffectiveShopPrices } from "@/app/(app)/groups/[id]/shop-actions";
+import { getGroupJokerIntel } from "@/app/(app)/groups/[id]/shop-actions";
 import { ChallengeCard } from "@/components/shared/challenge-card";
 import { Leaderboard } from "@/components/shared/leaderboard";
 import { ShopItemCard } from "@/components/shared/shop-item-card";
@@ -14,6 +15,7 @@ import {
   ShoppingBag,
 } from "lucide-react";
 import Link from "next/link";
+import { groupShopItemsByCategory } from "@/lib/shop-grouping";
 
 export default async function GroupHomePage({
   params,
@@ -25,6 +27,7 @@ export default async function GroupHomePage({
     getGroupHomeData(groupId),
     getEffectiveShopPrices(groupId),
   ]);
+  const jokerIntel = await getGroupJokerIntel(groupId);
   const {
     profile,
     currentGroupPoints,
@@ -34,6 +37,7 @@ export default async function GroupHomePage({
     seasonKey,
     crownHolderProfileId,
     shopItems,
+    groupMembers,
     isAdmin,
     userId,
   } = groupHomeData;
@@ -57,7 +61,7 @@ export default async function GroupHomePage({
               {currentGroupPoints}
             </span>
           </div>
-          <span className="text-xs text-muted-foreground sm:text-sm">pts</span>
+          <span className="text-xs text-muted-foreground sm:text-sm"></span>
         </div>
       </div>
 
@@ -83,7 +87,7 @@ export default async function GroupHomePage({
                 {pendingActions.length}
               </span>
             </div>
-            <div className="space-y-1.5 sm:space-y-2">
+            <div className="space-y-1 sm:space-y-1.5">
               {pendingActions.map(({ kind, challenge }) => {
                 const pendingLabel =
                   kind === "price_validation"
@@ -109,6 +113,7 @@ export default async function GroupHomePage({
                         (challenge.target as { username: string })?.username ?? "?"
                       }
                       groupId={groupId}
+                      compact
                     />
                   </div>
                 );
@@ -155,7 +160,7 @@ export default async function GroupHomePage({
               Aucune activité récente.
             </p>
           ) : (
-            <div className="space-y-1.5 sm:space-y-2">
+            <div className="space-y-1 sm:space-y-1.5">
               {recentActivity.slice(0, 3).map((c) => (
                 <ChallengeCard
                   key={c.id}
@@ -170,6 +175,7 @@ export default async function GroupHomePage({
                     (c.target as { username: string })?.username ?? "?"
                   }
                   groupId={groupId}
+                  compact
                 />
               ))}
               <Link
@@ -184,36 +190,15 @@ export default async function GroupHomePage({
 
         <TabsContent value="shop" className="mt-3 sm:mt-4">
           {(() => {
-            const specialItems = shopItems.filter((i) => i.item_type !== "custom");
-            const customItems = shopItems.filter((i) => i.item_type === "custom");
+            const groupedItems = groupShopItemsByCategory(shopItems);
             return (
-              <div className="space-y-4">
-                {specialItems.length > 0 && (
-                  <div className="space-y-3">
-                    {specialItems.map((item) => (
-                      <ShopItemCard
-                        key={item.id}
-                        id={item.id}
-                        groupId={groupId}
-                        name={item.name}
-                        description={item.description}
-                        price={effectiveShopPrices[item.id] ?? item.price}
-                        stock={item.stock}
-                        itemType={item.item_type}
-                        isAdmin={isAdmin}
-                      />
-                    ))}
-                  </div>
-                )}
-                {customItems.length > 0 && (
-                  <>
-                    {specialItems.length > 0 && (
-                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide sm:text-xs">
-                        Items personnalisés
-                      </p>
-                    )}
-                    <div className="space-y-3">
-                      {customItems.map((item) => (
+              <div className="space-y-3">
+                {groupedItems.map((group) => (
+                  <div key={group.category} className="space-y-2">
+                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide sm:text-xs">
+                      {group.label}
+                    </p>
+                    {group.items.map((item) => (
                         <ShopItemCard
                           key={item.id}
                           id={item.id}
@@ -224,14 +209,30 @@ export default async function GroupHomePage({
                           stock={item.stock}
                           itemType={item.item_type}
                           isAdmin={isAdmin}
+                        groupMembers={groupMembers}
+                        currentUserId={userId ?? undefined}
                         />
-                      ))}
-                    </div>
-                  </>
-                )}
+                    ))}
+                  </div>
+                ))}
                 {isAdmin && (
                   <div className="pt-1">
                     <AddShopItemDialog groupId={groupId} />
+                  </div>
+                )}
+                {"success" in jokerIntel && jokerIntel.success && (
+                  <div className="rounded-lg border p-3">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Mouchard actif (1h)
+                    </p>
+                    <div className="mt-2 space-y-1 text-sm">
+                      {jokerIntel.rows.map((row) => (
+                        <div key={row.profile_id} className="flex items-center justify-between">
+                          <span>{row.username}</span>
+                          <span className="font-medium">{row.jokers_available} joker(s)</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
