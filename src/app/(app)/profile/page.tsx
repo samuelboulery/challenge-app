@@ -17,6 +17,7 @@ import {
   Shield,
   Zap,
   Skull,
+  Crown,
   CheckCircle2,
   Circle,
 } from "lucide-react";
@@ -39,6 +40,11 @@ const ITEM_TYPE_CONFIG: Record<
     label: "Voleur",
     icon: Skull,
     className: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
+  },
+  item_49_3: {
+    label: "49.3",
+    icon: Crown,
+    className: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300",
   },
 };
 

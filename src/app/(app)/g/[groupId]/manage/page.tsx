@@ -40,8 +40,19 @@ export default async function GroupManagePage({
 
   if (!group) notFound();
 
-  const [{ data: members }, shopItems, allGroups, { data: leaderboardData }] =
+  const [
+    ,
+    { data: members },
+    shopItems,
+    allGroups,
+    { data: leaderboardData },
+    { data: profileTitlesData },
+    { data: activeSeasonRows },
+  ] =
     await Promise.all([
+      supabase.rpc("ensure_group_current_season", {
+        p_group_id: groupId,
+      }),
       supabase
         .from("members")
         .select("*, profiles(username, avatar_url)")
@@ -49,9 +60,19 @@ export default async function GroupManagePage({
         .order("joined_at", { ascending: true }),
       getShopItems(groupId),
       getMyGroups(),
-      supabase.rpc("get_group_points_leaderboard", {
+      supabase.rpc("get_group_all_time_leaderboard", {
         p_group_id: groupId,
       }),
+      supabase.rpc("get_group_profile_titles", {
+        p_group_id: groupId,
+      }),
+      supabase
+        .from("group_seasons")
+        .select("season_key, crown_holder_profile_id")
+        .eq("group_id", groupId)
+        .eq("status", "active")
+        .order("starts_at", { ascending: false })
+        .limit(1),
     ]);
 
   const leaderboardEntries = (leaderboardData ?? [])
@@ -63,6 +84,17 @@ export default async function GroupManagePage({
       };
     })
     .sort((a, b) => b.totalPoints - a.totalPoints);
+  const groupPointsByProfileId = new Map(
+    leaderboardEntries.map((entry) => [entry.profileId, entry.totalPoints]),
+  );
+  const activeSeason = activeSeasonRows?.[0] ?? null;
+  const profileTitles = (profileTitlesData ?? []) as {
+    title_key: string;
+    title_label: string;
+    profile_id: string | null;
+    username: string | null;
+    metric_value: number | null;
+  }[];
 
   const currentMember = members?.find((m) => m.profile_id === user?.id);
   const isOwner = currentMember?.role === "owner";
@@ -171,10 +203,39 @@ export default async function GroupManagePage({
       <section>
         <div className="flex items-center gap-2 mb-4">
           <Trophy className="size-5" />
-          <h2 className="text-lg font-semibold">Classement</h2>
+          <h2 className="text-lg font-semibold">
+            Classement général
+            {activeSeason?.season_key ? ` (saison en cours: ${activeSeason.season_key})` : ""}
+          </h2>
         </div>
-        <Leaderboard entries={leaderboardEntries} currentUserId={user?.id} />
+        <Leaderboard
+          entries={leaderboardEntries}
+          currentUserId={user?.id}
+          crownHolderProfileId={activeSeason?.crown_holder_profile_id ?? null}
+        />
       </section>
+
+      {profileTitles.length > 0 && (
+        <>
+          <Separator className="my-6" />
+          <section>
+            <h2 className="mb-4 text-lg font-semibold">Profils types</h2>
+            <div className="space-y-3">
+              {profileTitles.map((title) => (
+                <div key={title.title_key} className="rounded-lg border p-3">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                    {title.title_label}
+                  </p>
+                  <p className="mt-1 font-medium">
+                    {title.username ?? "Aucun"}
+                    {title.metric_value != null ? ` (${title.metric_value})` : ""}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+        </>
+      )}
 
       <Separator className="my-6" />
 
@@ -211,6 +272,9 @@ export default async function GroupManagePage({
                       Rejoint le{" "}
                       {new Date(member.joined_at).toLocaleDateString("fr-FR")}
                     </p>
+                    <p className="text-xs text-muted-foreground">
+                      {groupPointsByProfileId.get(member.profile_id) ?? 0} pts groupe
+                    </p>
                   </div>
                 </div>
                 <Badge variant={config.variant}>{config.label}</Badge>
@@ -234,6 +298,7 @@ export default async function GroupManagePage({
                 (member.profiles as { username: string } | null)?.username ??
                 "Utilisateur",
               role: member.role,
+              groupPoints: groupPointsByProfileId.get(member.profile_id) ?? 0,
             }))}
           />
         </>

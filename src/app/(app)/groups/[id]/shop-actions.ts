@@ -7,6 +7,7 @@ import {
   deleteShopItemSchema,
   updateShopItemSchema,
   purchaseItemSchema,
+  getEffectiveShopPricesSchema,
   parseFormData,
 } from "@/lib/validations";
 import { notify } from "@/lib/notifications";
@@ -95,6 +96,9 @@ export async function purchaseItem(formData: FormData) {
       return { error: "Rupture de stock" };
     if (error.message.includes("Not a member"))
       return { error: "Tu n'es pas membre de ce groupe" };
+    if (error.message.includes("Item not purchasable")) {
+      return { error: "Cet item n'est pas disponible à l'achat" };
+    }
     return { error: error.message };
   }
 
@@ -167,9 +171,30 @@ export async function getShopItems(groupId: string) {
     .from("shop_items")
     .select("*")
     .eq("group_id", groupId)
+    .neq("item_type", "item_49_3")
     .order("created_at", { ascending: false });
 
   return data ?? [];
+}
+
+export async function getEffectiveShopPrices(groupId: string) {
+  const parsed = getEffectiveShopPricesSchema.safeParse({ groupId });
+  if (!parsed.success) return {};
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("get_my_group_shop_effective_prices", {
+    p_group_id: parsed.data.groupId,
+  });
+
+  if (error || !data) return {};
+
+  return (data as { item_id: string; effective_price: number }[]).reduce(
+    (acc, row) => {
+      acc[row.item_id] = row.effective_price;
+      return acc;
+    },
+    {} as Record<string, number>,
+  );
 }
 
 export async function getMyInventory() {

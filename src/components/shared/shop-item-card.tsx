@@ -8,15 +8,15 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  ResponsivePanel,
+  ResponsivePanelContent,
+  ResponsivePanelDescription,
+  ResponsivePanelFooter,
+  ResponsivePanelHeader,
+  ResponsivePanelTitle,
+} from "@/components/ui/responsive-panel";
 import { BuyItemButton } from "./buy-item-button";
-import { Coins, Package, Trash2, Shield, Zap, Skull, Pencil } from "lucide-react";
+import { Coins, Package, Trash2, Shield, Zap, Skull, Pencil, Crown } from "lucide-react";
 import { toast } from "sonner";
 import { useEffect } from "react";
 
@@ -38,6 +38,11 @@ const ITEM_TYPE_CONFIG: Record<
     label: "Voleur",
     icon: Skull,
     className: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
+  },
+  item_49_3: {
+    label: "49.3",
+    icon: Crown,
+    className: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300",
   },
 };
 
@@ -99,23 +104,23 @@ export function ShopItemCard({
   return (
     <>
       <Card className={outOfStock ? "opacity-60" : ""}>
-        <CardContent className="flex items-center justify-between py-4">
+        <CardContent className="flex items-center justify-between py-3 sm:py-4">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <h3 className="font-semibold truncate">{name}</h3>
+              <h3 className="truncate text-sm font-semibold sm:text-base">{name}</h3>
               {typeConfig && (
-                <Badge variant="secondary" className={`text-xs shrink-0 ${typeConfig.className}`}>
+                <Badge variant="secondary" className={`shrink-0 text-[11px] sm:text-xs ${typeConfig.className}`}>
                   <typeConfig.icon className="mr-1 size-3" />
                   {typeConfig.label}
                 </Badge>
               )}
             </div>
             {description && (
-              <p className="mt-0.5 text-sm text-muted-foreground truncate">
+              <p className="mt-0.5 truncate text-xs text-muted-foreground sm:text-sm">
                 {description}
               </p>
             )}
-            <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
+            <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground sm:gap-3 sm:text-xs">
               <span className="flex items-center gap-1">
                 <Coins className="size-3.5" />
                 {price} pts
@@ -131,7 +136,7 @@ export function ShopItemCard({
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2 shrink-0 ml-3">
+          <div className="ml-2 flex shrink-0 items-center gap-1.5 sm:ml-3 sm:gap-2">
             <BuyItemButton
               itemId={id}
               groupId={groupId}
@@ -142,7 +147,7 @@ export function ShopItemCard({
             {isAdmin && (
               <>
                 <Button
-                  size="sm"
+                  size="icon-sm"
                   variant="ghost"
                   onClick={() => setEditOpen(true)}
                 >
@@ -154,7 +159,7 @@ export function ShopItemCard({
                     <input type="hidden" name="groupId" value={groupId} />
                     <Button
                       type="submit"
-                      size="sm"
+                      size="icon-sm"
                       variant="ghost"
                       disabled={deletePending}
                     >
@@ -168,14 +173,14 @@ export function ShopItemCard({
         </CardContent>
       </Card>
 
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Modifier {name}</DialogTitle>
-            <DialogDescription>
+      <ResponsivePanel open={editOpen} onOpenChange={setEditOpen}>
+        <ResponsivePanelContent>
+          <ResponsivePanelHeader>
+            <ResponsivePanelTitle>Modifier {name}</ResponsivePanelTitle>
+            <ResponsivePanelDescription>
               Ajuste le prix et le stock de cet item.
-            </DialogDescription>
-          </DialogHeader>
+            </ResponsivePanelDescription>
+          </ResponsivePanelHeader>
           <form action={editAction}>
             <input type="hidden" name="itemId" value={id} />
             <input type="hidden" name="groupId" value={groupId} />
@@ -190,6 +195,9 @@ export function ShopItemCard({
                   name="price"
                   type="number"
                   min={1}
+                  max={100000}
+                  inputMode="numeric"
+                  step={1}
                   defaultValue={price}
                   required
                 />
@@ -201,19 +209,21 @@ export function ShopItemCard({
                   name="stock"
                   type="number"
                   min={0}
+                  inputMode="numeric"
+                  step={1}
                   defaultValue={stock ?? ""}
                   placeholder="Illimité"
                 />
               </div>
             </div>
-            <DialogFooter>
+            <ResponsivePanelFooter>
               <Button type="submit" disabled={editPending}>
                 {editPending ? "Enregistrement..." : "Enregistrer"}
               </Button>
-            </DialogFooter>
+            </ResponsivePanelFooter>
           </form>
-        </DialogContent>
-      </Dialog>
+        </ResponsivePanelContent>
+      </ResponsivePanel>
     </>
   );
 }

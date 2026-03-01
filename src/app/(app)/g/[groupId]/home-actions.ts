@@ -54,6 +54,7 @@ export async function getGroupHomeData(groupId: string) {
     pendingProofCandidatesResult,
     recentResult,
     { data: leaderboardData },
+    { data: seasonRows },
     shopItems,
     { data: currentMember },
   ] = await Promise.all([
@@ -111,9 +112,21 @@ export async function getGroupHomeData(groupId: string) {
       .order("updated_at", { ascending: false })
       .limit(5),
 
-    supabase.rpc("get_group_points_leaderboard", {
+    supabase.rpc("ensure_group_current_season", {
       p_group_id: groupId,
     }),
+
+    supabase.rpc("get_group_season_leaderboard", {
+      p_group_id: groupId,
+    }),
+
+    supabase
+      .from("group_seasons")
+      .select("season_key, crown_holder_profile_id")
+      .eq("group_id", groupId)
+      .eq("status", "active")
+      .order("starts_at", { ascending: false })
+      .limit(1),
 
     getShopItems(groupId),
 
@@ -135,6 +148,7 @@ export async function getGroupHomeData(groupId: string) {
 
   const currentGroupPoints =
     leaderboard.find((entry) => entry.profileId === user.id)?.totalPoints ?? 0;
+  const activeSeason = seasonRows?.[0] ?? null;
 
   const role = currentMember?.role;
   const isAdmin = role === "owner" || role === "admin";
@@ -212,6 +226,8 @@ export async function getGroupHomeData(groupId: string) {
     pendingActions,
     recentActivity: recentResult.data ?? [],
     leaderboard,
+    seasonKey: activeSeason?.season_key ?? null,
+    crownHolderProfileId: activeSeason?.crown_holder_profile_id ?? null,
     shopItems,
     isAdmin,
     userId: user.id,

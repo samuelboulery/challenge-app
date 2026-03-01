@@ -1,4 +1,5 @@
 import { getGroupHomeData } from "./home-actions";
+import { getEffectiveShopPrices } from "@/app/(app)/groups/[id]/shop-actions";
 import { ChallengeCard } from "@/components/shared/challenge-card";
 import { Leaderboard } from "@/components/shared/leaderboard";
 import { ShopItemCard } from "@/components/shared/shop-item-card";
@@ -20,50 +21,69 @@ export default async function GroupHomePage({
   params: Promise<{ groupId: string }>;
 }) {
   const { groupId } = await params;
+  const [groupHomeData, effectiveShopPrices] = await Promise.all([
+    getGroupHomeData(groupId),
+    getEffectiveShopPrices(groupId),
+  ]);
   const {
     profile,
     currentGroupPoints,
     pendingActions,
     recentActivity,
     leaderboard,
+    seasonKey,
+    crownHolderProfileId,
     shopItems,
     isAdmin,
     userId,
-  } = await getGroupHomeData(groupId);
+  } = groupHomeData;
 
   return (
-    <main className="px-4 pt-8">
+    <main className="px-4 pt-5 sm:pt-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="truncate text-xl font-bold sm:text-2xl">
             Salut, {profile?.username ?? "!"}
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="mt-0.5 text-sm text-muted-foreground">
             Quoi de neuf aujourd&apos;hui ?
           </p>
         </div>
-        <div className="flex items-center gap-2 rounded-lg bg-muted px-4 py-2">
-          <Coins className="size-5 text-yellow-500" />
-          <span className="text-2xl font-bold">
-            {currentGroupPoints}
-          </span>
-          <span className="text-sm text-muted-foreground">pts</span>
+        <div className="shrink-0 rounded-xl bg-muted px-3 py-2 sm:px-4">
+          <div className="flex items-center gap-1.5">
+            <Coins className="size-4 text-yellow-500 sm:size-5" />
+            <span className="text-lg font-bold sm:text-2xl">
+              {currentGroupPoints}
+            </span>
+          </div>
+          <span className="text-xs text-muted-foreground sm:text-sm">pts</span>
         </div>
       </div>
+
+      {pendingActions.length === 0 && (
+        <div className="mt-4 rounded-lg border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+          Rien en attente pour le moment.
+        </div>
+      )}
 
       {/* En attente */}
       {pendingActions.length > 0 && (
         <>
-          <Separator className="my-6" />
+          <Separator className="my-4 sm:my-6" />
           <section>
-            <div className="flex items-center gap-2 mb-4">
-              <Bell className="size-5" />
-              <h2 className="text-lg font-semibold">
-                En attente ({pendingActions.length})
-              </h2>
+            <div className="mb-3 flex items-center justify-between gap-2 sm:mb-4">
+              <div className="flex items-center gap-2">
+                <Bell className="size-5" />
+                <h2 className="text-base font-semibold sm:text-lg">
+                  En attente
+                </h2>
+              </div>
+              <span className="rounded-full bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
+                {pendingActions.length}
+              </span>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1.5 sm:space-y-2">
               {pendingActions.map(({ kind, challenge }) => {
                 const pendingLabel =
                   kind === "price_validation"
@@ -74,7 +94,7 @@ export default async function GroupHomePage({
 
                 return (
                   <div key={challenge.id} className="space-y-1">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide sm:text-xs">
                       {pendingLabel}
                     </p>
                     <ChallengeCard
@@ -99,17 +119,24 @@ export default async function GroupHomePage({
       )}
 
       {/* Classement */}
-      <Separator className="my-6" />
+      <Separator className="my-4 sm:my-6" />
       <section>
-        <div className="flex items-center gap-2 mb-4">
+        <div className="mb-3 flex items-center gap-2 sm:mb-4">
           <Trophy className="size-5" />
-          <h2 className="text-lg font-semibold">Classement</h2>
+          <h2 className="text-base font-semibold sm:text-lg">
+            Classement de saison
+            {seasonKey ? ` (${seasonKey})` : ""}
+          </h2>
         </div>
-        <Leaderboard entries={leaderboard} currentUserId={userId ?? undefined} />
+        <Leaderboard
+          entries={leaderboard}
+          currentUserId={userId ?? undefined}
+          crownHolderProfileId={crownHolderProfileId}
+        />
       </section>
 
       {/* Onglets Activite / Boutique */}
-      <Separator className="my-6" />
+      <Separator className="my-4 sm:my-6" />
       <Tabs defaultValue="activity">
         <TabsList className="w-full">
           <TabsTrigger value="activity" className="flex-1 gap-1.5">
@@ -122,13 +149,13 @@ export default async function GroupHomePage({
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="activity" className="mt-4">
+        <TabsContent value="activity" className="mt-3 sm:mt-4">
           {recentActivity.length === 0 ? (
             <p className="py-4 text-center text-sm text-muted-foreground">
               Aucune activité récente.
             </p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-1.5 sm:space-y-2">
               {recentActivity.slice(0, 3).map((c) => (
                 <ChallengeCard
                   key={c.id}
@@ -147,7 +174,7 @@ export default async function GroupHomePage({
               ))}
               <Link
                 href={`/g/${groupId}/challenges`}
-                className="block text-center text-sm text-primary underline pt-1"
+                className="inline-flex min-h-12 w-full items-center justify-center rounded-md border text-sm font-medium text-primary hover:bg-muted/50"
               >
                 Voir tous les défis
               </Link>
@@ -155,7 +182,7 @@ export default async function GroupHomePage({
           )}
         </TabsContent>
 
-        <TabsContent value="shop" className="mt-4">
+        <TabsContent value="shop" className="mt-3 sm:mt-4">
           {(() => {
             const specialItems = shopItems.filter((i) => i.item_type !== "custom");
             const customItems = shopItems.filter((i) => i.item_type === "custom");
@@ -170,7 +197,7 @@ export default async function GroupHomePage({
                         groupId={groupId}
                         name={item.name}
                         description={item.description}
-                        price={item.price}
+                        price={effectiveShopPrices[item.id] ?? item.price}
                         stock={item.stock}
                         itemType={item.item_type}
                         isAdmin={isAdmin}
@@ -181,7 +208,7 @@ export default async function GroupHomePage({
                 {customItems.length > 0 && (
                   <>
                     {specialItems.length > 0 && (
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide sm:text-xs">
                         Items personnalisés
                       </p>
                     )}
@@ -193,7 +220,7 @@ export default async function GroupHomePage({
                           groupId={groupId}
                           name={item.name}
                           description={item.description}
-                          price={item.price}
+                          price={effectiveShopPrices[item.id] ?? item.price}
                           stock={item.stock}
                           itemType={item.item_type}
                           isAdmin={isAdmin}
@@ -203,7 +230,7 @@ export default async function GroupHomePage({
                   </>
                 )}
                 {isAdmin && (
-                  <div className="flex justify-end">
+                  <div className="pt-1">
                     <AddShopItemDialog groupId={groupId} />
                   </div>
                 )}

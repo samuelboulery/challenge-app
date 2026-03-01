@@ -3,22 +3,24 @@
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  ResponsivePanel,
+  ResponsivePanelContent,
+  ResponsivePanelDescription,
+  ResponsivePanelFooter,
+  ResponsivePanelHeader,
+  ResponsivePanelTitle,
+} from "@/components/ui/responsive-panel";
 import { Progress } from "@/components/ui/progress";
 import {
   acceptChallenge,
   declineChallenge,
+  abandonChallengeAfterFailedProof,
   cancelChallengeByCreator,
   contestChallenge,
   voteOnChallenge,
   voteChallengePrice,
   getDeclineInfo,
+  validateOwnProofWith493,
 } from "@/app/(app)/challenges/actions";
 import type { ChallengeStatus } from "@/types/database.types";
 import { Check, X, Clock, Trophy, Shield, Zap, AlertTriangle, ThumbsUp, ThumbsDown } from "lucide-react";
@@ -58,6 +60,8 @@ interface ChallengeActionsProps {
   isValidator?: boolean;
   priceState?: PriceNegotiationState | null;
   canContest?: boolean;
+  proofRejectionsCount?: number;
+  available493Items?: { id: string }[];
 }
 
 type DeclineInfoState = {
@@ -80,6 +84,8 @@ export function ChallengeActions({
   isValidator = false,
   priceState,
   canContest = true,
+  proofRejectionsCount = 0,
+  available493Items = [],
 }: ChallengeActionsProps) {
   const [declineDialogOpen, setDeclineDialogOpen] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
@@ -95,6 +101,7 @@ export function ChallengeActions({
   );
 
   const [isPending, startTransition] = useTransition();
+  const hasFailedProofOnce = proofRejectionsCount >= 1;
 
   const handleDeclineClick = () => {
     startTransition(async () => {
@@ -214,6 +221,17 @@ export function ChallengeActions({
     });
   };
 
+  const handleValidateOwnProofWith493 = () => {
+    startTransition(async () => {
+      const result = await validateOwnProofWith493(challengeId);
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(`Preuve validée automatiquement ! +${result.reward ?? points} pts`);
+    });
+  };
+
   const handlePriceVote = (vote: "counter" | "cancel" | "keep") => {
     startTransition(async () => {
       let nextCounter: number | undefined;
@@ -291,6 +309,17 @@ export function ChallengeActions({
         return;
       }
       toast.success("Défi annulé par le lanceur");
+    });
+  };
+
+  const handleAbandonAfterFailedProof = () => {
+    startTransition(async () => {
+      const result = await abandonChallengeAfterFailedProof(challengeId);
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
+      toast.warning(`Pari perdu (-${result.penalty} points)`);
     });
   };
 
@@ -377,7 +406,7 @@ export function ChallengeActions({
           />
         )}
 
-        <div className="flex gap-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <Button
             className="flex-1"
             variant={ps?.user_vote === "keep" ? "default" : "outline"}
@@ -415,11 +444,11 @@ export function ChallengeActions({
               min={1}
               value={counterPoints}
               onChange={(e) => setCounterPoints(e.target.value)}
-              className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm"
+              className="border-input bg-background h-12 sm:h-9 w-full rounded-md border px-3 text-sm"
             />
             <span className="text-xs text-muted-foreground">pts</span>
           </div>
-          <div className="flex gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <Button
               className="w-full"
               variant="outline"
@@ -455,7 +484,7 @@ export function ChallengeActions({
     return (
       <>
         <div className="space-y-3">
-          <div className="flex gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <Button
               className="flex-1"
               disabled={isPending}
@@ -491,23 +520,23 @@ export function ChallengeActions({
           )}
         </div>
 
-        <Dialog open={declineDialogOpen} onOpenChange={setDeclineDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
+        <ResponsivePanel open={declineDialogOpen} onOpenChange={setDeclineDialogOpen}>
+          <ResponsivePanelContent>
+            <ResponsivePanelHeader>
+              <ResponsivePanelTitle className="flex items-center gap-2">
                 <AlertTriangle className="size-5 text-orange-500" />
                 Refus avec pénalité
-              </DialogTitle>
-              <DialogDescription>
+              </ResponsivePanelTitle>
+              <ResponsivePanelDescription>
                 Tu as utilisé tes 2 refus gratuits cette semaine. Refuser ce
                 défi te coûtera{" "}
                 <strong className="text-destructive">
                   {declineInfo?.penalty ?? 0} points
                 </strong>{" "}
                 (50% des {points} pts du défi).
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter className="flex-col gap-2 sm:flex-col">
+              </ResponsivePanelDescription>
+            </ResponsivePanelHeader>
+            <ResponsivePanelFooter className="flex-col gap-2 sm:flex-col">
               {declineInfo && declineInfo.availableJokers.length > 0 && (
                 <Button
                   className="w-full"
@@ -541,26 +570,26 @@ export function ChallengeActions({
               >
                 Annuler
               </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </ResponsivePanelFooter>
+          </ResponsivePanelContent>
+        </ResponsivePanel>
 
-        <Dialog open={acceptDialogOpen} onOpenChange={setAcceptDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
+        <ResponsivePanel open={acceptDialogOpen} onOpenChange={setAcceptDialogOpen}>
+          <ResponsivePanelContent>
+            <ResponsivePanelHeader>
+              <ResponsivePanelTitle className="flex items-center gap-2">
                 <Zap className="size-5 text-yellow-500" />
                 Utiliser un Booster ?
-              </DialogTitle>
-              <DialogDescription>
+              </ResponsivePanelTitle>
+              <ResponsivePanelDescription>
                 Tu as {availableBoosters.length} Booster
                 {availableBoosters.length > 1 ? "s" : ""} disponible
                 {availableBoosters.length > 1 ? "s" : ""}. Un Booster doublera
                 les points gagnés ({points} → {points * 2} pts) si tu
                 réussis ce défi.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter className="flex-col gap-2 sm:flex-col">
+              </ResponsivePanelDescription>
+            </ResponsivePanelHeader>
+            <ResponsivePanelFooter className="flex-col gap-2 sm:flex-col">
               <Button
                 className="w-full"
                 onClick={() =>
@@ -580,9 +609,9 @@ export function ChallengeActions({
                 <Check className="mr-1 size-4" />
                 {isPending ? "..." : "Accepter sans Booster"}
               </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </ResponsivePanelFooter>
+          </ResponsivePanelContent>
+        </ResponsivePanel>
       </>
     );
   }
@@ -610,72 +639,95 @@ export function ChallengeActions({
   if (status === "accepted" && isTarget) {
     return (
       <div className="space-y-3">
+        {hasFailedProofOnce && (
+          <div className="flex items-center gap-2 rounded-lg bg-orange-50 p-4 text-sm text-orange-700 dark:bg-orange-950 dark:text-orange-300">
+            <AlertTriangle className="size-4 shrink-0" />
+            Ta première preuve a été refusée. Il te reste une dernière tentative,
+            ou tu peux abandonner avec pénalité.
+          </div>
+        )}
         {hasBoosted && (
           <div className="flex items-center gap-2 rounded-lg bg-yellow-50 p-4 text-sm text-yellow-700 dark:bg-yellow-950 dark:text-yellow-300">
             <Zap className="size-4 shrink-0" />
             Booster actif — x2 points à la validation
           </div>
         )}
-        <Button
-          variant="destructive"
-          className="w-full"
-          disabled={isPending}
-          onClick={handleCancelClick}
-        >
-          <X className="mr-1 size-4" />
-          {isPending ? "..." : "Annuler le défi"}
-        </Button>
+        {hasFailedProofOnce ? (
+          <Button
+            variant="destructive"
+            className="w-full"
+            disabled={isPending}
+            onClick={handleAbandonAfterFailedProof}
+          >
+            <X className="mr-1 size-4" />
+            {isPending
+              ? "..."
+              : `Abandonner le pari (-${Math.max(1, Math.floor(points / 2))} pts)`}
+          </Button>
+        ) : (
+          <Button
+            variant="destructive"
+            className="w-full"
+            disabled={isPending}
+            onClick={handleCancelClick}
+          >
+            <X className="mr-1 size-4" />
+            {isPending ? "..." : "Annuler le défi"}
+          </Button>
+        )}
 
-        <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <AlertTriangle className="size-5 text-orange-500" />
-                Confirmer l&apos;annulation
-              </DialogTitle>
-              <DialogDescription>
-                {cancelInfo?.isFree
-                  ? "Ce défi sera annulé sans pénalité."
-                  : `Annuler ce défi te coûtera ${cancelInfo?.penalty ?? 0} points (50% des ${points} pts).`}
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter className="flex-col gap-2 sm:flex-col">
-              {!cancelInfo?.isFree && (cancelInfo?.availableJokers.length ?? 0) > 0 && (
+        {!hasFailedProofOnce && (
+          <ResponsivePanel open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+            <ResponsivePanelContent>
+              <ResponsivePanelHeader>
+                <ResponsivePanelTitle className="flex items-center gap-2">
+                  <AlertTriangle className="size-5 text-orange-500" />
+                  Confirmer l&apos;annulation
+                </ResponsivePanelTitle>
+                <ResponsivePanelDescription>
+                  {cancelInfo?.isFree
+                    ? "Ce défi sera annulé sans pénalité."
+                    : `Annuler ce défi te coûtera ${cancelInfo?.penalty ?? 0} points (50% des ${points} pts).`}
+                </ResponsivePanelDescription>
+              </ResponsivePanelHeader>
+              <ResponsivePanelFooter className="flex-col gap-2 sm:flex-col">
+                {!cancelInfo?.isFree && (cancelInfo?.availableJokers.length ?? 0) > 0 && (
+                  <Button
+                    className="w-full"
+                    onClick={() => handleCancelConfirm(cancelInfo?.availableJokers[0])}
+                    disabled={isPending}
+                  >
+                    <Shield className="mr-1 size-4" />
+                    {isPending
+                      ? "..."
+                      : `Utiliser un Joker et annuler (${cancelInfo?.availableJokers.length ?? 0} dispo)`}
+                  </Button>
+                )}
                 <Button
+                  variant={cancelInfo?.isFree ? "default" : "destructive"}
                   className="w-full"
-                  onClick={() => handleCancelConfirm(cancelInfo?.availableJokers[0])}
+                  onClick={() => handleCancelConfirm()}
                   disabled={isPending}
                 >
-                  <Shield className="mr-1 size-4" />
+                  <X className="mr-1 size-4" />
                   {isPending
                     ? "..."
-                    : `Utiliser un Joker et annuler (${cancelInfo?.availableJokers.length ?? 0} dispo)`}
+                    : cancelInfo?.isFree
+                      ? "Confirmer l&apos;annulation"
+                      : `Annuler et perdre ${cancelInfo?.penalty ?? 0} pts`}
                 </Button>
-              )}
-              <Button
-                variant={cancelInfo?.isFree ? "default" : "destructive"}
-                className="w-full"
-                onClick={() => handleCancelConfirm()}
-                disabled={isPending}
-              >
-                <X className="mr-1 size-4" />
-                {isPending
-                  ? "..."
-                  : cancelInfo?.isFree
-                    ? "Confirmer l&apos;annulation"
-                    : `Annuler et perdre ${cancelInfo?.penalty ?? 0} pts`}
-              </Button>
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={() => setCancelDialogOpen(false)}
-                disabled={isPending}
-              >
-                Conserver le défi
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setCancelDialogOpen(false)}
+                  disabled={isPending}
+                >
+                  Conserver le défi
+                </Button>
+              </ResponsivePanelFooter>
+            </ResponsivePanelContent>
+          </ResponsivePanel>
+        )}
       </div>
     );
   }
@@ -736,6 +788,17 @@ export function ChallengeActions({
             En attente de validation par le groupe...
           </div>
           {vi && <VoteProgress voteInfo={vi} />}
+          {available493Items.length > 0 && (
+            <Button
+              className="w-full"
+              variant="outline"
+              disabled={isPending}
+              onClick={handleValidateOwnProofWith493}
+            >
+              <Shield className="mr-1 size-4" />
+              {isPending ? "..." : "Valider ma preuve (49.3)"}
+            </Button>
+          )}
         </div>
       );
     }
@@ -746,7 +809,7 @@ export function ChallengeActions({
       <div className="space-y-3">
         {vi && <VoteProgress voteInfo={vi} />}
         {canVote && (
-          <div className="flex gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <Button
               className="flex-1"
               variant={vi?.userVote === "approve" ? "default" : "outline"}
@@ -799,6 +862,15 @@ export function ChallengeActions({
       <div className="flex items-center gap-2 rounded-lg bg-muted p-4 text-sm text-muted-foreground">
         <X className="size-4 shrink-0" />
         Défi refusé
+      </div>
+    );
+  }
+
+  if (status === "rejected") {
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-red-50 p-4 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
+        <X className="size-4 shrink-0" />
+        Pari perdu. Le défi est rejeté avec pénalité.
       </div>
     );
   }

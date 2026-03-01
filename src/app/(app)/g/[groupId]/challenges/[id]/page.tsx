@@ -65,9 +65,14 @@ export default async function GroupChallengeDetailPage({
     (challenge.groups as { name: string })?.name ?? "?";
 
   let availableBoosters: { id: string }[] = [];
+  let available493: { id: string }[] = [];
   if (challenge.status === "proposed" && isTarget) {
     const boosters = await getUserItemsByType(groupId, "booster");
     availableBoosters = boosters.map((b) => ({ id: b.id }));
+  }
+  if (challenge.status === "proof_submitted" && isTarget) {
+    const items493 = await getUserItemsByType(groupId, "item_49_3");
+    available493 = items493.map((item) => ({ id: item.id }));
   }
 
   let voteInfo = null;
@@ -105,10 +110,10 @@ export default async function GroupChallengeDetailPage({
     .order("created_at", { ascending: false });
 
   return (
-    <main className="px-4 pt-8">
+    <main className="px-4 pt-5 sm:pt-8">
       <Link
         href={`/g/${groupId}/challenges`}
-        className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        className="mb-3 inline-flex min-h-12 items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
         Défis du groupe
@@ -116,7 +121,7 @@ export default async function GroupChallengeDetailPage({
 
       <div>
         <div className="flex items-start justify-between gap-2">
-          <h1 className="text-2xl font-bold" suppressHydrationWarning>
+          <h1 className="text-xl font-bold sm:text-2xl" suppressHydrationWarning>
             {challenge.title}
           </h1>
           <div className="flex items-center gap-2 shrink-0">
@@ -126,17 +131,17 @@ export default async function GroupChallengeDetailPage({
                 x2
               </Badge>
             )}
-            <Badge variant={config.variant}>
+            <Badge variant={config.variant} className="text-[11px] sm:text-xs">
               {config.label}
             </Badge>
           </div>
         </div>
         {challenge.description && (
-          <p className="mt-2 text-muted-foreground">{challenge.description}</p>
+          <p className="mt-1 text-sm text-muted-foreground sm:mt-2 sm:text-base">{challenge.description}</p>
         )}
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-4 text-sm">
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs sm:mt-4 sm:gap-4 sm:text-sm">
         <div className="flex items-center gap-1.5">
           <span className="text-muted-foreground">{creatorName}</span>
           <ArrowRight className="size-3.5 text-muted-foreground" />
@@ -158,7 +163,7 @@ export default async function GroupChallengeDetailPage({
         <span className="text-muted-foreground">{groupName}</span>
       </div>
 
-      <Separator className="my-6" />
+      <Separator className="my-4 sm:my-6" />
 
       <ChallengeActions
         challengeId={challenge.id}
@@ -173,19 +178,21 @@ export default async function GroupChallengeDetailPage({
         isValidator={isMember && !isCreator && !isTarget}
         priceState={priceState}
         canContest={!challenge.contested_once}
+        proofRejectionsCount={challenge.proof_rejections_count ?? 0}
+        available493Items={available493}
       />
 
       {challenge.status === "accepted" && isTarget && (
-        <div className="mt-4">
+        <div className="mt-3 sm:mt-4">
           <SubmitProofForm challengeId={challenge.id} />
         </div>
       )}
 
       {proofs && proofs.length > 0 && (
         <>
-          <Separator className="my-6" />
+          <Separator className="my-4 sm:my-6" />
           <section>
-            <h2 className="mb-4 text-lg font-semibold">
+            <h2 className="mb-3 text-base font-semibold sm:mb-4 sm:text-lg">
               Preuves ({proofs.length})
             </h2>
             <div className="space-y-3">
@@ -193,7 +200,7 @@ export default async function GroupChallengeDetailPage({
                 const proofAuthor =
                   (proof.profiles as { username: string })?.username ?? "?";
                 return (
-                  <div key={proof.id} className="rounded-lg border p-4">
+                  <div key={proof.id} className="rounded-lg border p-3 sm:p-4">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-medium">{proofAuthor}</p>
                       <div className="flex items-center gap-2">

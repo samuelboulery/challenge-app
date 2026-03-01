@@ -14,9 +14,10 @@ export type TransactionType =
   | "challenge_penalty"
   | "shop_purchase"
   | "bonus"
-  | "refund";
+  | "refund"
+  | "season_reset";
 
-export type ItemType = "custom" | "joker" | "booster" | "voleur";
+export type ItemType = "custom" | "joker" | "booster" | "voleur" | "item_49_3";
 
 export type MemberRole = "owner" | "admin" | "member";
 
@@ -132,6 +133,73 @@ export interface Database {
           },
         ];
       };
+      group_seasons: {
+        Row: {
+          id: string;
+          group_id: string;
+          season_key: string;
+          starts_at: string;
+          ends_at: string;
+          status: string;
+          winner_profile_id: string | null;
+          winner_points: number;
+          crown_holder_profile_id: string | null;
+          finalized_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          group_id: string;
+          season_key: string;
+          starts_at: string;
+          ends_at: string;
+          status?: string;
+          winner_profile_id?: string | null;
+          winner_points?: number;
+          crown_holder_profile_id?: string | null;
+          finalized_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          group_id?: string;
+          season_key?: string;
+          starts_at?: string;
+          ends_at?: string;
+          status?: string;
+          winner_profile_id?: string | null;
+          winner_points?: number;
+          crown_holder_profile_id?: string | null;
+          finalized_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "group_seasons_group_id_fkey";
+            columns: ["group_id"];
+            isOneToOne: false;
+            referencedRelation: "groups";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "group_seasons_winner_profile_id_fkey";
+            columns: ["winner_profile_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "group_seasons_crown_holder_profile_id_fkey";
+            columns: ["crown_holder_profile_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       challenges: {
         Row: {
           id: string;
@@ -145,6 +213,7 @@ export interface Database {
           deadline: string | null;
           booster_inventory_id: string | null;
           contested_once: boolean;
+          proof_rejections_count: number;
           created_at: string;
           updated_at: string;
         };
@@ -160,6 +229,7 @@ export interface Database {
           deadline?: string | null;
           booster_inventory_id?: string | null;
           contested_once?: boolean;
+          proof_rejections_count?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -175,6 +245,7 @@ export interface Database {
           deadline?: string | null;
           booster_inventory_id?: string | null;
           contested_once?: boolean;
+          proof_rejections_count?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -252,6 +323,7 @@ export interface Database {
           type: TransactionType;
           challenge_id: string | null;
           shop_item_id: string | null;
+          group_id: string | null;
           created_at: string;
         };
         Insert: {
@@ -261,6 +333,7 @@ export interface Database {
           type: TransactionType;
           challenge_id?: string | null;
           shop_item_id?: string | null;
+          group_id?: string | null;
           created_at?: string;
         };
         Update: {
@@ -270,6 +343,7 @@ export interface Database {
           type?: TransactionType;
           challenge_id?: string | null;
           shop_item_id?: string | null;
+          group_id?: string | null;
           created_at?: string;
         };
         Relationships: [
@@ -292,6 +366,13 @@ export interface Database {
             columns: ["shop_item_id"];
             isOneToOne: false;
             referencedRelation: "shop_items";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "transactions_group_id_fkey";
+            columns: ["group_id"];
+            isOneToOne: false;
+            referencedRelation: "groups";
             referencedColumns: ["id"];
           },
         ];
@@ -581,6 +662,13 @@ export interface Database {
         Args: { p_item_id: string };
         Returns: undefined;
       };
+      get_my_group_shop_effective_prices: {
+        Args: { p_group_id: string };
+        Returns: {
+          item_id: string;
+          effective_price: number;
+        }[];
+      };
       join_group_by_invite_code: {
         Args: { code: string };
         Returns: string;
@@ -607,6 +695,50 @@ export interface Database {
           username: string;
           group_points: number;
         }[];
+      };
+      ensure_group_current_season: {
+        Args: { p_group_id: string };
+        Returns: {
+          season_id: string;
+          season_key: string;
+          starts_at: string;
+          ends_at: string;
+          crown_holder_profile_id: string | null;
+        }[];
+      };
+      get_group_season_leaderboard: {
+        Args: { p_group_id: string };
+        Returns: {
+          profile_id: string;
+          username: string;
+          group_points: number;
+        }[];
+      };
+      get_group_all_time_leaderboard: {
+        Args: { p_group_id: string };
+        Returns: {
+          profile_id: string;
+          username: string;
+          group_points: number;
+        }[];
+      };
+      get_group_profile_titles: {
+        Args: { p_group_id: string };
+        Returns: {
+          title_key: string;
+          title_label: string;
+          profile_id: string | null;
+          username: string | null;
+          metric_value: number;
+        }[];
+      };
+      adjust_member_group_points: {
+        Args: {
+          p_group_id: string;
+          p_member_id: string;
+          p_new_points: number;
+        };
+        Returns: Record<string, unknown>;
       };
       transfer_group_ownership: {
         Args: { p_group_id: string; p_new_owner_id: string };
@@ -656,6 +788,10 @@ export interface Database {
         Args: { p_challenge_id: string; p_vote: string };
         Returns: Record<string, unknown>;
       };
+      abandon_challenge_after_failed_proof: {
+        Args: { p_challenge_id: string };
+        Returns: Record<string, unknown>;
+      };
       check_and_award_badges: {
         Args: { p_profile_id: string };
         Returns: number;
@@ -669,6 +805,20 @@ export interface Database {
           p_metadata?: Record<string, unknown>;
         };
         Returns: undefined;
+      };
+      create_challenges_bulk: {
+        Args: {
+          p_group_id: string;
+          p_target_ids: string[];
+          p_title: string;
+          p_description?: string | null;
+          p_points?: number;
+          p_deadline?: string | null;
+        };
+        Returns: {
+          challenge_id: string;
+          target_id: string;
+        }[];
       };
       get_push_subscriptions: {
         Args: { p_profile_id: string };
@@ -691,6 +841,14 @@ export interface Database {
           stolen: number;
           victim_id: string;
           victim_username: string;
+        };
+      };
+      use_item_49_3_on_challenge: {
+        Args: { p_challenge_id: string };
+        Returns: {
+          status: string;
+          reward: number;
+          inventory_id: string;
         };
       };
     };

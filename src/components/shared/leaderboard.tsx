@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { Coins, Medal } from "lucide-react";
+import { Coins, Crown, Medal } from "lucide-react";
 
 interface LeaderboardEntry {
   profileId: string;
@@ -10,6 +10,7 @@ interface LeaderboardEntry {
 interface LeaderboardProps {
   entries: LeaderboardEntry[];
   currentUserId: string | undefined;
+  crownHolderProfileId?: string | null;
 }
 
 const MEDAL_STYLES = [
@@ -18,7 +19,11 @@ const MEDAL_STYLES = [
   "text-amber-600",
 ] as const;
 
-export function Leaderboard({ entries, currentUserId }: LeaderboardProps) {
+export function Leaderboard({
+  entries,
+  currentUserId,
+  crownHolderProfileId,
+}: LeaderboardProps) {
   if (entries.length === 0) {
     return (
       <p className="py-4 text-center text-sm text-muted-foreground">
@@ -31,6 +36,8 @@ export function Leaderboard({ entries, currentUserId }: LeaderboardProps) {
     <div className="space-y-2">
       {entries.map((entry, index) => {
         const isCurrentUser = entry.profileId === currentUserId;
+        const isCrownHolder =
+          !!crownHolderProfileId && entry.profileId === crownHolderProfileId;
         const rank = index + 1;
         const hasMedal = rank <= 3;
 
@@ -58,6 +65,12 @@ export function Leaderboard({ entries, currentUserId }: LeaderboardProps) {
                 {entry.username}
                 {isCurrentUser && " (toi)"}
               </span>
+              {isCrownHolder && (
+                <Crown
+                  className="size-4 text-yellow-500"
+                  aria-label="Vainqueur de la saison précédente"
+                />
+              )}
             </div>
             <div className="flex items-center gap-1.5">
               <Coins className="size-4 text-yellow-500" />

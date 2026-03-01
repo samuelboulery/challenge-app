@@ -62,8 +62,24 @@ async function notifyValidationRequest(
 }
 
 export async function createChallenge(formData: FormData) {
-  const parsed = parseFormData(createChallengeSchema, formData);
-  if (!parsed.success) return { error: parsed.error };
+  const titleRaw = formData.get("title");
+  const descriptionRaw = formData.get("description");
+  const deadlineRaw = formData.get("deadline");
+
+  const raw = {
+    groupId: formData.get("groupId"),
+    targetIds: formData
+      .getAll("targetIds")
+      .filter((value): value is string => typeof value === "string" && value.length > 0),
+    title: typeof titleRaw === "string" ? titleRaw : "",
+    description: typeof descriptionRaw === "string" && descriptionRaw !== "" ? descriptionRaw : null,
+    points: Number(formData.get("points")),
+    deadline: typeof deadlineRaw === "string" && deadlineRaw !== "" ? deadlineRaw : null,
+  };
+  const parsed = createChallengeSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Données invalides" };
+  }
 
   const supabase = await createClient();
   const {
@@ -72,7 +88,7 @@ export async function createChallenge(formData: FormData) {
 
   if (!user) return { error: "Non authentifié" };
 
-  if (parsed.data.targetId === user.id) {
+  if (parsed.data.targetIds.some((targetId) => targetId === user.id)) {
     return { error: "Tu ne peux pas te défier toi-même" };
   }
 
@@ -82,32 +98,34 @@ export async function createChallenge(formData: FormData) {
     .eq("id", user.id)
     .single();
 
-  const { data: newChallenge, error } = await supabase
-    .from("challenges")
-    .insert({
-      group_id: parsed.data.groupId,
-      creator_id: user.id,
-      target_id: parsed.data.targetId,
-      title: parsed.data.title,
-      description: parsed.data.description,
-      points: parsed.data.points,
-      deadline: parsed.data.deadline,
-    })
-    .select("id")
-    .single();
-
-  if (error) return { error: error.message };
-
-  const targetNotifResult = await notify(
-    parsed.data.targetId,
-    "challenge_received",
-    "Nouveau défi !",
-    `${profile?.username ?? "Quelqu'un"} t'a lancé le défi "${parsed.data.title}"`,
-    { group_id: parsed.data.groupId, challenge_id: newChallenge.id },
-  );
-  if ("error" in targetNotifResult) {
-    return { error: targetNotifResult.error ?? "Erreur de notification inconnue" };
+  const { data, error } = await supabase.rpc("create_challenges_bulk", {
+    p_group_id: parsed.data.groupId,
+    p_target_ids: parsed.data.targetIds,
+    p_title: parsed.data.title,
+    p_description: parsed.data.description ?? null,
+    p_points: parsed.data.points,
+    p_deadline: parsed.data.deadline ?? null,
+  });
+  if (error) {
+    if (error.message.includes("Non-member target")) {
+      return { error: "Une ou plusieurs cibles ne sont pas membres du groupe" };
+    }
+    if (error.message.includes("Cannot target yourself")) {
+      return { error: "Tu ne peux pas te défier toi-même" };
+    }
+    if (error.message.includes("Not a group member")) {
+      return { error: "Tu ne fais pas partie de ce groupe" };
+    }
+    return { error: error.message };
   }
+
+  const { sendPushToUser } = await import("@/app/(app)/notifications/push-actions");
+  const pushBody = `${profile?.username ?? "Quelqu'un"} t'a lancé le défi "${parsed.data.title}"`;
+  await Promise.allSettled(
+    ((data ?? []) as { target_id: string }[]).map((item) =>
+      sendPushToUser(item.target_id, "Nouveau défi !", pushBody),
+    ),
+  );
 
   revalidatePath(`/g/${parsed.data.groupId}`);
   return { success: true };
@@ -387,6 +405,9 @@ export async function submitProof(formData: FormData) {
   if (challenge.status !== "accepted") {
     return { error: "Le défi doit être accepté avant de soumettre une preuve" };
   }
+  if ((challenge.proof_rejections_count ?? 0) >= 2) {
+    return { error: "Ce défi est perdu, tu ne peux plus soumettre de preuve." };
+  }
 
   const { error: proofError } = await supabase.from("proofs").insert({
     challenge_id: parsed.data.challengeId,
@@ -440,6 +461,61 @@ export async function submitProof(formData: FormData) {
   return { success: true };
 }
 
+export async function validateOwnProofWith493(challengeId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "Non authentifié" };
+
+  const { data: challenge } = await supabase
+    .from("challenges")
+    .select("id, group_id, creator_id, title, points, booster_inventory_id, target_id")
+    .eq("id", challengeId)
+    .single();
+
+  if (!challenge) return { error: "Défi introuvable" };
+  if (challenge.target_id !== user.id) return { error: "Action non autorisée" };
+
+  const { data, error } = await supabase.rpc("use_item_49_3_on_challenge", {
+    p_challenge_id: challengeId,
+  });
+
+  if (error) {
+    if (error.message.includes("Item 49.3 not available")) {
+      return { error: "Tu n'as pas de 49.3 disponible" };
+    }
+    if (error.message.includes("Invalid status")) {
+      return { error: "Le défi doit être en attente de validation de preuve" };
+    }
+    if (error.message.includes("Not the target")) {
+      return { error: "Action non autorisée" };
+    }
+    return { error: error.message };
+  }
+
+  const payload = (data ?? {}) as { reward?: number };
+  const reward =
+    payload.reward ??
+    (challenge.booster_inventory_id ? challenge.points * 2 : challenge.points);
+
+  await notify(
+    challenge.creator_id,
+    "challenge_validated",
+    "Preuve validée via 49.3",
+    `La cible a validé automatiquement sa preuve pour "${challenge.title}" avec un 49.3.`,
+    { challenge_id: challengeId, group_id: challenge.group_id },
+  );
+
+  await awardBadges(challenge.target_id);
+
+  revalidatePath(`/g/${challenge.group_id}`);
+  revalidatePath(`/g/${challenge.group_id}/challenges/${challengeId}`);
+  revalidatePath("/profile");
+  return { success: true, reward };
+}
+
 export async function voteOnChallenge(challengeId: string, vote: string) {
   const parsed = voteOnChallengeSchema.safeParse({ challengeId, vote });
   if (!parsed.success) {
@@ -451,7 +527,7 @@ export async function voteOnChallenge(challengeId: string, vote: string) {
 
   const { data: challenge } = await supabase
     .from("challenges")
-    .select("target_id, title, points, group_id, booster_inventory_id")
+    .select("target_id, creator_id, title, points, group_id, booster_inventory_id")
     .eq("id", challengeId)
     .single();
 
@@ -476,6 +552,9 @@ export async function voteOnChallenge(challengeId: string, vote: string) {
     rejections: number;
     threshold: number;
     reward?: number;
+    penalty?: number;
+    retries_left?: number;
+    proof_rejections_count?: number;
   };
 
   if (challenge) {
@@ -493,12 +572,27 @@ export async function voteOnChallenge(challengeId: string, vote: string) {
       );
 
       await awardBadges(challenge.target_id);
-    } else if (voteResult.status === "rejected") {
+    } else if (voteResult.status === "retry_allowed") {
       await notify(
         challenge.target_id,
         "challenge_rejected",
         "Preuve refusée",
-        `Ta preuve pour le défi "${challenge.title}" a été refusée. Réessaie !`,
+        `Ta preuve pour le défi "${challenge.title}" a été refusée. Dernière tentative disponible.`,
+        { challenge_id: challengeId, group_id: challenge.group_id },
+      );
+    } else if (voteResult.status === "rejected") {
+      await notify(
+        challenge.target_id,
+        "challenge_lost",
+        "Pari perdu",
+        `Ton défi "${challenge.title}" est perdu. -${voteResult.penalty ?? Math.max(1, Math.floor(challenge.points / 2))} points.`,
+        { challenge_id: challengeId, group_id: challenge.group_id },
+      );
+      await notify(
+        challenge.creator_id,
+        "challenge_lost",
+        "Défi perdu par la cible",
+        `Le défi "${challenge.title}" est perdu par la cible.`,
         { challenge_id: challengeId, group_id: challenge.group_id },
       );
     }
@@ -508,6 +602,63 @@ export async function voteOnChallenge(challengeId: string, vote: string) {
 
   revalidatePath("/profile");
   return { success: true, ...voteResult };
+}
+
+export async function abandonChallengeAfterFailedProof(challengeId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "Non authentifié" };
+
+  const { data: challenge } = await supabase
+    .from("challenges")
+    .select("group_id, creator_id, target_id, title, points")
+    .eq("id", challengeId)
+    .single();
+
+  if (!challenge) return { error: "Défi introuvable" };
+  if (challenge.target_id !== user.id) return { error: "Action non autorisée" };
+
+  const { data, error } = await supabase.rpc("abandon_challenge_after_failed_proof", {
+    p_challenge_id: challengeId,
+  });
+
+  if (error) {
+    if (error.message.includes("Not the target")) return { error: "Action non autorisée" };
+    if (error.message.includes("Invalid status")) {
+      return { error: "Le défi doit être en attente d'une nouvelle preuve" };
+    }
+    if (error.message.includes("No failed proof yet")) {
+      return { error: "Tu dois d'abord avoir un refus de preuve avant d'abandonner" };
+    }
+    return { error: error.message };
+  }
+
+  const payload = (data ?? {}) as { penalty?: number; status?: string };
+  const penalty = payload.penalty ?? Math.max(1, Math.floor(challenge.points / 2));
+
+  await notify(
+    challenge.creator_id,
+    "challenge_lost",
+    "Défi perdu par la cible",
+    `La cible a abandonné après refus de preuve sur "${challenge.title}".`,
+    { challenge_id: challengeId, group_id: challenge.group_id },
+  );
+
+  await notify(
+    challenge.target_id,
+    "challenge_lost",
+    "Pari perdu",
+    `Tu as abandonné le défi "${challenge.title}". -${penalty} points.`,
+    { challenge_id: challengeId, group_id: challenge.group_id },
+  );
+
+  revalidatePath(`/g/${challenge.group_id}`);
+  revalidatePath(`/g/${challenge.group_id}/challenges/${challengeId}`);
+  revalidatePath("/profile");
+  return { success: true, penalty, status: payload.status ?? "rejected" };
 }
 
 export async function voteChallengePrice(
