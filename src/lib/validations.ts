@@ -2,15 +2,26 @@ import { z } from "zod";
 
 const MAX_TEXT = 500;
 const MAX_NAME = 100;
+const CHALLENGE_PRESET_POINTS = [5, 10, 25, 50, 75, 100, 150] as const;
 
 const uuid = z.string().uuid("ID invalide");
 
 export const createChallengeSchema = z.object({
   groupId: uuid,
-  targetId: uuid,
+  targetIds: z
+    .array(uuid)
+    .min(1, "Sélectionne au moins une cible")
+    .refine((ids) => new Set(ids).size === ids.length, "Les cibles doivent être uniques"),
   title: z.string().min(1, "Le titre est requis").max(MAX_NAME, `${MAX_NAME} caractères max`),
   description: z.string().max(MAX_TEXT).nullable(),
-  points: z.number().int().min(1, "Les points doivent être positifs").max(10_000),
+  points: z
+    .number()
+    .int()
+    .refine(
+      (value) =>
+        (CHALLENGE_PRESET_POINTS as readonly number[]).includes(value),
+      "Valeur de points invalide",
+    ),
   deadline: z.string().nullable(),
 });
 
@@ -62,6 +73,12 @@ export const transferGroupOwnershipSchema = z.object({
   newOwnerId: uuid,
 });
 
+export const updateMemberGroupPointsSchema = z.object({
+  groupId: uuid,
+  memberId: uuid,
+  newPoints: z.number().int().min(0, "Les points doivent être positifs ou nuls").max(1_000_000),
+});
+
 export const addShopItemSchema = z.object({
   groupId: uuid,
   name: z.string().min(1, "Le nom est requis").max(MAX_NAME),
@@ -85,6 +102,10 @@ export const deleteShopItemSchema = z.object({
 
 export const purchaseItemSchema = z.object({
   itemId: uuid,
+  groupId: uuid,
+});
+
+export const getEffectiveShopPricesSchema = z.object({
   groupId: uuid,
 });
 
@@ -157,6 +178,7 @@ export function parseFormData<T extends z.ZodType>(
 
   if ("price" in raw && raw.price !== null) raw.price = Number(raw.price);
   if ("points" in raw && raw.points !== null) raw.points = Number(raw.points);
+  if ("newPoints" in raw && raw.newPoints !== null) raw.newPoints = Number(raw.newPoints);
   if ("stock" in raw && raw.stock !== null) raw.stock = Number(raw.stock);
 
   const result = schema.safeParse(raw);

@@ -53,6 +53,7 @@ export async function getGroupHomeData(groupId: string) {
     pendingNegotiatingCandidatesResult,
     pendingProofCandidatesResult,
     recentResult,
+    ,
     { data: leaderboardData },
     { data: seasonRows },
     shopItems,

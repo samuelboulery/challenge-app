@@ -7,12 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  ResponsivePanel,
+  ResponsivePanelContent,
+  ResponsivePanelHeader,
+  ResponsivePanelTitle,
+  ResponsivePanelTrigger,
+} from "@/components/ui/responsive-panel";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Pencil, Camera } from "lucide-react";
 
@@ -97,17 +97,17 @@ export function EditProfileDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <ResponsivePanel open={open} onOpenChange={setOpen}>
+      <ResponsivePanelTrigger asChild>
         <Button variant="outline" size="sm">
           <Pencil className="mr-1 size-3.5" />
           Modifier
         </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle>Modifier le profil</DialogTitle>
-        </DialogHeader>
+      </ResponsivePanelTrigger>
+      <ResponsivePanelContent className="sm:max-w-sm">
+        <ResponsivePanelHeader>
+          <ResponsivePanelTitle>Modifier le profil</ResponsivePanelTitle>
+        </ResponsivePanelHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
             <p className="text-sm text-destructive">{error}</p>
@@ -117,7 +117,7 @@ export function EditProfileDialog({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="group relative"
+              className="group relative min-h-12 min-w-12"
             >
               <Avatar className="size-20">
                 <AvatarImage src={preview ?? undefined} alt="Avatar" />
@@ -156,7 +156,7 @@ export function EditProfileDialog({
             {isPending ? "Enregistrement..." : "Enregistrer"}
           </Button>
         </form>
-      </DialogContent>
-    </Dialog>
+      </ResponsivePanelContent>
+    </ResponsivePanel>
   );
 }

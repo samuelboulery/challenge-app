@@ -6,14 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  ResponsivePanel,
+  ResponsivePanelContent,
+  ResponsivePanelDescription,
+  ResponsivePanelFooter,
+  ResponsivePanelHeader,
+  ResponsivePanelTitle,
+  ResponsivePanelTrigger,
+} from "@/components/ui/responsive-panel";
 import { Plus } from "lucide-react";
 
 export function CreateGroupDialog() {
@@ -28,20 +28,20 @@ export function CreateGroupDialog() {
   );
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <ResponsivePanel open={open} onOpenChange={setOpen}>
+      <ResponsivePanelTrigger asChild>
         <Button size="sm">
           <Plus className="mr-1 size-4" />
           Créer
         </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Créer un groupe</DialogTitle>
-          <DialogDescription>
+      </ResponsivePanelTrigger>
+      <ResponsivePanelContent>
+        <ResponsivePanelHeader>
+          <ResponsivePanelTitle>Créer un groupe</ResponsivePanelTitle>
+          <ResponsivePanelDescription>
             Crée un groupe et invite tes amis avec le code.
-          </DialogDescription>
-        </DialogHeader>
+          </ResponsivePanelDescription>
+        </ResponsivePanelHeader>
         <form action={formAction}>
           <div className="space-y-4 py-4">
             {state?.error && (
@@ -65,13 +65,13 @@ export function CreateGroupDialog() {
               />
             </div>
           </div>
-          <DialogFooter>
+          <ResponsivePanelFooter>
             <Button type="submit" disabled={pending}>
               {pending ? "Création..." : "Créer le groupe"}
             </Button>
-          </DialogFooter>
+          </ResponsivePanelFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </ResponsivePanelContent>
+    </ResponsivePanel>
   );
 }

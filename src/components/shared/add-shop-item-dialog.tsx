@@ -6,14 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  ResponsivePanel,
+  ResponsivePanelContent,
+  ResponsivePanelDescription,
+  ResponsivePanelFooter,
+  ResponsivePanelHeader,
+  ResponsivePanelTitle,
+  ResponsivePanelTrigger,
+} from "@/components/ui/responsive-panel";
 import { Plus } from "lucide-react";
 
 interface AddShopItemDialogProps {
@@ -35,22 +35,22 @@ export function AddShopItemDialog({ groupId }: AddShopItemDialogProps) {
   );
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <ResponsivePanel open={open} onOpenChange={setOpen}>
+      <ResponsivePanelTrigger asChild>
         <Button size="sm" variant="outline">
           <Plus className="mr-1 size-4" />
           Item perso
         </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Ajouter un item personnalisé</DialogTitle>
-          <DialogDescription>
+      </ResponsivePanelTrigger>
+      <ResponsivePanelContent>
+        <ResponsivePanelHeader>
+          <ResponsivePanelTitle>Ajouter un item personnalisé</ResponsivePanelTitle>
+          <ResponsivePanelDescription>
             Crée un item custom que les membres pourront acheter avec leurs
             points. Les items spéciaux (Joker, Booster, Voleur) sont déjà
             disponibles automatiquement.
-          </DialogDescription>
-        </DialogHeader>
+          </ResponsivePanelDescription>
+        </ResponsivePanelHeader>
         <form action={formAction}>
           <input type="hidden" name="groupId" value={groupId} />
           <input type="hidden" name="itemType" value="custom" />
@@ -97,13 +97,13 @@ export function AddShopItemDialog({ groupId }: AddShopItemDialogProps) {
               />
             </div>
           </div>
-          <DialogFooter>
+          <ResponsivePanelFooter>
             <Button type="submit" disabled={pending}>
               {pending ? "Ajout..." : "Ajouter l'item"}
             </Button>
-          </DialogFooter>
+          </ResponsivePanelFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </ResponsivePanelContent>
+    </ResponsivePanel>
   );
 }

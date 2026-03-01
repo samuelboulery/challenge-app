@@ -4,16 +4,15 @@ import { useActionState, useState } from "react";
 import { purchaseItem } from "@/app/(app)/groups/[id]/shop-actions";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  ResponsivePanel,
+  ResponsivePanelContent,
+  ResponsivePanelDescription,
+  ResponsivePanelFooter,
+  ResponsivePanelHeader,
+  ResponsivePanelTitle,
+} from "@/components/ui/responsive-panel";
 import { ShoppingCart, Skull } from "lucide-react";
 import { toast } from "sonner";
-import { useEffect } from "react";
 
 interface BuyItemButtonProps {
   itemId: string;
@@ -32,29 +31,25 @@ export function BuyItemButton({
 }: BuyItemButtonProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const [state, formAction, pending] = useActionState(
+  const [, formAction, pending] = useActionState(
     async (_prev: { error?: string; success?: boolean; voleur?: { stolen: number; victimUsername: string } } | null, formData: FormData) => {
       const result = await purchaseItem(formData);
+      if (result?.success) {
+        setConfirmOpen(false);
+        if (result.voleur) {
+          toast.success(
+            `Vol réussi ! Tu as volé ${result.voleur.stolen} points à ${result.voleur.victimUsername}`,
+          );
+        } else {
+          toast.success("Achat effectué !");
+        }
+      } else if (result?.error) {
+        toast.error(result.error);
+      }
       return result ?? null;
     },
     null,
   );
-
-  useEffect(() => {
-    if (state?.success) {
-      setConfirmOpen(false);
-      if (state.voleur) {
-        toast.success(
-          `Vol réussi ! Tu as volé ${state.voleur.stolen} points à ${state.voleur.victimUsername}`,
-        );
-      } else {
-        toast.success("Achat effectué !");
-      }
-    }
-    if (state?.error) {
-      toast.error(state.error);
-    }
-  }, [state]);
 
   const handleClick = () => {
     if (itemType === "voleur") {
@@ -73,19 +68,19 @@ export function BuyItemButton({
           <Skull className="mr-1 size-3.5" />
           {price} pts
         </Button>
-        <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
+        <ResponsivePanel open={confirmOpen} onOpenChange={setConfirmOpen}>
+          <ResponsivePanelContent>
+            <ResponsivePanelHeader>
+              <ResponsivePanelTitle className="flex items-center gap-2">
                 <Skull className="size-5 text-red-500" />
                 Confirmer le vol
-              </DialogTitle>
-              <DialogDescription>
+              </ResponsivePanelTitle>
+              <ResponsivePanelDescription>
                 Cet item va immédiatement voler 30% des points du joueur en
                 tête du classement. Cette action est irréversible.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter className="flex-col gap-2 sm:flex-col">
+              </ResponsivePanelDescription>
+            </ResponsivePanelHeader>
+            <ResponsivePanelFooter className="flex-col gap-2 sm:flex-col">
               <form action={formAction} className="w-full">
                 <input type="hidden" name="itemId" value={itemId} />
                 <input type="hidden" name="groupId" value={groupId} />
@@ -106,9 +101,9 @@ export function BuyItemButton({
               >
                 Annuler
               </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </ResponsivePanelFooter>
+          </ResponsivePanelContent>
+        </ResponsivePanel>
       </>
     );
   }

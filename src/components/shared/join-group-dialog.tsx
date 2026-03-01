@@ -6,14 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  ResponsivePanel,
+  ResponsivePanelContent,
+  ResponsivePanelDescription,
+  ResponsivePanelFooter,
+  ResponsivePanelHeader,
+  ResponsivePanelTitle,
+  ResponsivePanelTrigger,
+} from "@/components/ui/responsive-panel";
 import { KeyRound } from "lucide-react";
 
 export function JoinGroupDialog() {
@@ -28,20 +28,20 @@ export function JoinGroupDialog() {
   );
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <ResponsivePanel open={open} onOpenChange={setOpen}>
+      <ResponsivePanelTrigger asChild>
         <Button size="sm" variant="outline">
           <KeyRound className="mr-1 size-4" />
           Rejoindre
         </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Rejoindre un groupe</DialogTitle>
-          <DialogDescription>
+      </ResponsivePanelTrigger>
+      <ResponsivePanelContent>
+        <ResponsivePanelHeader>
+          <ResponsivePanelTitle>Rejoindre un groupe</ResponsivePanelTitle>
+          <ResponsivePanelDescription>
             Entre le code d&apos;invitation partagé par un ami.
-          </DialogDescription>
-        </DialogHeader>
+          </ResponsivePanelDescription>
+        </ResponsivePanelHeader>
         <form action={formAction}>
           <div className="space-y-4 py-4">
             {state?.error && (
@@ -58,13 +58,13 @@ export function JoinGroupDialog() {
               />
             </div>
           </div>
-          <DialogFooter>
+          <ResponsivePanelFooter>
             <Button type="submit" disabled={pending}>
               {pending ? "Recherche..." : "Rejoindre"}
             </Button>
-          </DialogFooter>
+          </ResponsivePanelFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </ResponsivePanelContent>
+    </ResponsivePanel>
   );
 }

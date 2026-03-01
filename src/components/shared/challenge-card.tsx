@@ -48,18 +48,18 @@ export function ChallengeCard({
   return (
     <Link href={href} className="block">
       <Card className="transition-colors hover:bg-accent/50">
-        <CardContent className="flex items-center justify-between py-4">
+        <CardContent className="flex items-center justify-between py-3 sm:py-4">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <h3 className="font-semibold truncate">{title}</h3>
-              <Badge variant={config.variant} className="shrink-0 text-xs">
+              <h3 className="truncate text-sm font-semibold sm:text-base">{title}</h3>
+              <Badge variant={config.variant} className="shrink-0 text-[11px] sm:text-xs">
                 {config.label}
               </Badge>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground truncate">
+            <p className="mt-0.5 truncate text-xs text-muted-foreground sm:mt-1 sm:text-sm">
               {creatorName} → {targetName}
             </p>
-            <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
+            <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground sm:mt-1 sm:gap-3 sm:text-xs">
               <span className="flex items-center gap-1">
                 <Coins className="size-3.5" />
                 {points} pts
@@ -67,7 +67,7 @@ export function ChallengeCard({
               {groupName && <span>{groupName}</span>}
             </div>
           </div>
-          <ChevronRight className="size-5 shrink-0 text-muted-foreground" />
+          <ChevronRight className="size-4 shrink-0 text-muted-foreground sm:size-5" />
         </CardContent>
       </Card>
     </Link>

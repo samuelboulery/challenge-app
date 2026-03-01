@@ -11,6 +11,7 @@ import {
   deleteGroupSchema,
   resetGroupSchema,
   transferGroupOwnershipSchema,
+  updateMemberGroupPointsSchema,
   parseFormData,
 } from "@/lib/validations";
 import { awardBadges } from "@/lib/badges";
@@ -298,6 +299,44 @@ export async function resetGroup(formData: FormData) {
   revalidatePath(`/g/${parsed.data.groupId}`);
   revalidatePath(`/g/${parsed.data.groupId}/manage`);
   revalidatePath(`/g/${parsed.data.groupId}/challenges`);
+  return { success: true };
+}
+
+export async function updateMemberGroupPoints(formData: FormData) {
+  const parsed = parseFormData(updateMemberGroupPointsSchema, formData);
+  if (!parsed.success) return { error: parsed.error };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "Non authentifié" };
+
+  const { error } = await (supabase as unknown as {
+    rpc: (
+      fn: string,
+      args: Record<string, unknown>,
+    ) => Promise<{ error: { message: string } | null }>;
+  }).rpc("adjust_member_group_points", {
+    p_group_id: parsed.data.groupId,
+    p_member_id: parsed.data.memberId,
+    p_new_points: parsed.data.newPoints,
+  });
+
+  if (error) {
+    if (error.message.includes("Not allowed")) return { error: "Action non autorisée" };
+    if (error.message.includes("Target user is not a member")) {
+      return { error: "Ce membre n'est plus dans le groupe" };
+    }
+    if (error.message.includes("Resulting total_points would be negative")) {
+      return { error: "Impossible: le total global de points deviendrait négatif" };
+    }
+    return { error: error.message };
+  }
+
+  revalidatePath(`/g/${parsed.data.groupId}`);
+  revalidatePath(`/g/${parsed.data.groupId}/manage`);
   return { success: true };
 }
 
