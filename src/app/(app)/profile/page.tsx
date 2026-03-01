@@ -89,8 +89,9 @@ export default async function ProfilePage() {
   const filteredInventory = selectedGroupId
     ? inventory.filter((item) => getItemGroup(item).groupId === selectedGroupId)
     : [];
-  const selectedGroupName = filteredInventory.length > 0
-    ? getItemGroup(filteredInventory[0]).groupName
+  const firstFilteredItem = filteredInventory[0];
+  const selectedGroupName = firstFilteredItem
+    ? getItemGroup(firstFilteredItem).groupName
     : null;
 
   const earnedBadgeIds = new Set(myBadges.map((ub) => ub.badge_id));
