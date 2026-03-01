@@ -53,7 +53,7 @@ async function notifyValidationRequest(
     validatorIds.map(async (validatorId) => {
       const notifResult = await notify(validatorId, type, title, body, metadata);
       if ("error" in notifResult) {
-        failures.push(notifResult.error);
+        failures.push(notifResult.error ?? "Erreur de notification inconnue");
       }
     }),
   );
@@ -105,7 +105,9 @@ export async function createChallenge(formData: FormData) {
     `${profile?.username ?? "Quelqu'un"} t'a lancé le défi "${parsed.data.title}"`,
     { group_id: parsed.data.groupId, challenge_id: newChallenge.id },
   );
-  if ("error" in targetNotifResult) return { error: targetNotifResult.error };
+  if ("error" in targetNotifResult) {
+    return { error: targetNotifResult.error ?? "Erreur de notification inconnue" };
+  }
 
   revalidatePath(`/g/${parsed.data.groupId}`);
   return { success: true };
@@ -226,7 +228,9 @@ export async function contestChallenge(challengeId: string) {
     challenge.creator_id,
     challenge.target_id,
   );
-  if ("error" in validatorsResult) return { error: validatorsResult.error };
+  if ("error" in validatorsResult) {
+    return { error: validatorsResult.error ?? "Erreur de notification inconnue" };
+  }
 
   const validatorFailures = await notifyValidationRequest(
     validatorsResult.validatorIds,
@@ -407,7 +411,9 @@ export async function submitProof(formData: FormData) {
     `Une preuve a été soumise pour le défi "${challenge.title}"`,
     { challenge_id: parsed.data.challengeId, group_id: challenge.group_id },
   );
-  if ("error" in creatorNotifResult) return { error: creatorNotifResult.error };
+  if ("error" in creatorNotifResult) {
+    return { error: creatorNotifResult.error ?? "Erreur de notification inconnue" };
+  }
 
   const validatorsResult = await getEligibleValidatorIds(
     supabase,
@@ -415,7 +421,9 @@ export async function submitProof(formData: FormData) {
     challenge.creator_id,
     challenge.target_id,
   );
-  if ("error" in validatorsResult) return { error: validatorsResult.error };
+  if ("error" in validatorsResult) {
+    return { error: validatorsResult.error ?? "Erreur de notification inconnue" };
+  }
 
   const validatorFailures = await notifyValidationRequest(
     validatorsResult.validatorIds,

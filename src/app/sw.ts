@@ -1,6 +1,6 @@
 import { defaultCache } from "@serwist/next/worker";
 import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
-import { Serwist } from "serwist";
+import { NetworkOnly, Serwist } from "serwist";
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -13,12 +13,12 @@ declare const self: ServiceWorkerGlobalScope;
 const htmlAndRscNetworkOnly = [
   {
     matcher: ({ request }: { request: Request }) => request.mode === "navigate",
-    handler: "NetworkOnly" as const,
+    handler: new NetworkOnly(),
   },
   {
     matcher: ({ request }: { request: Request }) =>
       request.headers.get("RSC") === "1",
-    handler: "NetworkOnly" as const,
+    handler: new NetworkOnly(),
   },
 ];
 
