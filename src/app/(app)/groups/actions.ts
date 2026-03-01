@@ -2,13 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import {
   createGroupSchema,
   joinGroupSchema,
   leaveGroupSchema,
   updateGroupSchema,
   deleteGroupSchema,
+  resetGroupSchema,
   transferGroupOwnershipSchema,
   parseFormData,
 } from "@/lib/validations";
@@ -208,6 +209,20 @@ export async function deleteGroup(formData: FormData) {
     return { error: "Action non autorisée" };
   }
 
+  const { data: group } = await supabase
+    .from("groups")
+    .select("name")
+    .eq("id", parsed.data.groupId)
+    .single();
+
+  if (!group) {
+    return { error: "Groupe introuvable" };
+  }
+
+  if (parsed.data.groupNameConfirmation.trim() !== group.name) {
+    return { error: "Le nom du groupe ne correspond pas" };
+  }
+
   const { error } = await supabase.rpc("delete_group_admin", {
     p_group_id: parsed.data.groupId,
   });
@@ -216,6 +231,74 @@ export async function deleteGroup(formData: FormData) {
 
   revalidatePath("/");
   redirect("/");
+}
+
+export async function resetGroup(formData: FormData) {
+  const parsed = parseFormData(resetGroupSchema, formData);
+  if (!parsed.success) return { error: parsed.error };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "Non authentifié" };
+
+  const { data: membership } = await supabase
+    .from("members")
+    .select("role")
+    .eq("group_id", parsed.data.groupId)
+    .eq("profile_id", user.id)
+    .single();
+
+  if (!membership || membership.role !== "owner") {
+    return { error: "Action non autorisée" };
+  }
+
+  const { data: group } = await supabase
+    .from("groups")
+    .select("name")
+    .eq("id", parsed.data.groupId)
+    .single();
+
+  if (!group) {
+    return { error: "Groupe introuvable" };
+  }
+
+  if (parsed.data.groupNameConfirmation.trim() !== group.name) {
+    return { error: "Le nom du groupe ne correspond pas" };
+  }
+
+  const { data: proofPaths, error } = await supabase.rpc("reset_group_data_admin", {
+    p_group_id: parsed.data.groupId,
+  });
+
+  if (error) return { error: error.message };
+
+  if (proofPaths && proofPaths.length > 0) {
+    const adminSupabase = createServiceRoleClient();
+    if (!adminSupabase) {
+      return {
+        error:
+          "Configuration serveur manquante: ajoute SUPABASE_SERVICE_ROLE_KEY dans les variables d'environnement.",
+      };
+    }
+    const { error: storageError } = await adminSupabase.storage
+      .from("proofs")
+      .remove(proofPaths);
+
+    if (storageError) {
+      return {
+        error:
+          "Le groupe a été remis à 0, mais certaines photos n'ont pas pu être supprimées du bucket.",
+      };
+    }
+  }
+
+  revalidatePath(`/g/${parsed.data.groupId}`);
+  revalidatePath(`/g/${parsed.data.groupId}/manage`);
+  revalidatePath(`/g/${parsed.data.groupId}/challenges`);
+  return { success: true };
 }
 
 export async function getMyGroups() {

@@ -20,7 +20,7 @@ const STATUS_CONFIG: Record<
   { label: string; variant: "default" | "secondary" | "outline" | "destructive" }
 > = {
   proposed: { label: "Proposé", variant: "outline" },
-  negotiating: { label: "Tarif en négociation", variant: "outline" },
+  negotiating: { label: "Contestation en cours", variant: "outline" },
   accepted: { label: "Accepté", variant: "secondary" },
   in_progress: { label: "En cours", variant: "secondary" },
   proof_submitted: { label: "Preuve soumise", variant: "default" },
@@ -116,7 +116,9 @@ export default async function GroupChallengeDetailPage({
 
       <div>
         <div className="flex items-start justify-between gap-2">
-          <h1 className="text-2xl font-bold">{challenge.title}</h1>
+          <h1 className="text-2xl font-bold" suppressHydrationWarning>
+            {challenge.title}
+          </h1>
           <div className="flex items-center gap-2 shrink-0">
             {hasBoosted && (
               <Badge className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300">
@@ -164,13 +166,13 @@ export default async function GroupChallengeDetailPage({
         isCreator={isCreator}
         isTarget={isTarget}
         points={challenge.points}
-        groupId={groupId}
         hasBoosted={hasBoosted}
         availableBoosters={availableBoosters}
         voteInfo={voteInfo}
         isMember={isMember}
         isValidator={isMember && !isCreator && !isTarget}
         priceState={priceState}
+        canContest={!challenge.contested_once}
       />
 
       {challenge.status === "accepted" && isTarget && (

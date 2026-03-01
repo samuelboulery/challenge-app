@@ -144,6 +144,7 @@ export interface Database {
           status: ChallengeStatus;
           deadline: string | null;
           booster_inventory_id: string | null;
+          contested_once: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -158,6 +159,7 @@ export interface Database {
           status?: ChallengeStatus;
           deadline?: string | null;
           booster_inventory_id?: string | null;
+          contested_once?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -172,6 +174,7 @@ export interface Database {
           status?: ChallengeStatus;
           deadline?: string | null;
           booster_inventory_id?: string | null;
+          contested_once?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -593,11 +596,27 @@ export interface Database {
         Args: { p_group_id: string };
         Returns: undefined;
       };
+      reset_group_data_admin: {
+        Args: { p_group_id: string };
+        Returns: string[];
+      };
+      get_group_points_leaderboard: {
+        Args: { p_group_id: string };
+        Returns: {
+          profile_id: string;
+          username: string;
+          group_points: number;
+        }[];
+      };
       transfer_group_ownership: {
         Args: { p_group_id: string; p_new_owner_id: string };
         Returns: undefined;
       };
       start_challenge_price_negotiation: {
+        Args: { p_challenge_id: string };
+        Returns: Record<string, unknown>;
+      };
+      start_challenge_contestation: {
         Args: { p_challenge_id: string };
         Returns: Record<string, unknown>;
       };
@@ -609,8 +628,24 @@ export interface Database {
         };
         Returns: Record<string, unknown>;
       };
+      vote_challenge_contestation: {
+        Args: {
+          p_challenge_id: string;
+          p_vote: string;
+          p_counter_points?: number | null;
+        };
+        Returns: Record<string, unknown>;
+      };
       cancel_challenge_by_creator: {
         Args: { p_challenge_id: string };
+        Returns: Record<string, unknown>;
+      };
+      creator_decide_counter_proposal: {
+        Args: {
+          p_challenge_id: string;
+          p_action: string;
+          p_counter_points?: number | null;
+        };
         Returns: Record<string, unknown>;
       };
       get_challenge_price_state: {

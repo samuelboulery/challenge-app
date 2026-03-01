@@ -8,11 +8,58 @@ import {
   submitProofSchema,
   voteOnChallengeSchema,
   voteChallengePriceSchema,
+  contestChallengeSchema,
+  creatorDecideCounterProposalSchema,
   cancelChallengeByCreatorSchema,
   parseFormData,
 } from "@/lib/validations";
 import { notify } from "@/lib/notifications";
 import { awardBadges } from "@/lib/badges";
+
+type ServerClient = Awaited<ReturnType<typeof createClient>>;
+
+async function getEligibleValidatorIds(
+  supabase: ServerClient,
+  groupId: string,
+  creatorId: string,
+  targetId: string,
+) {
+  const { data, error } = await supabase
+    .from("members")
+    .select("profile_id")
+    .eq("group_id", groupId)
+    .neq("profile_id", creatorId)
+    .neq("profile_id", targetId);
+
+  if (error) {
+    return { error: error.message, validatorIds: [] as string[] };
+  }
+
+  return {
+    validatorIds: (data ?? []).map((m) => m.profile_id),
+  };
+}
+
+async function notifyValidationRequest(
+  validatorIds: string[],
+  type: string,
+  title: string,
+  body: string,
+  metadata: Record<string, unknown>,
+) {
+  const failures: string[] = [];
+
+  await Promise.all(
+    validatorIds.map(async (validatorId) => {
+      const notifResult = await notify(validatorId, type, title, body, metadata);
+      if ("error" in notifResult) {
+        failures.push(notifResult.error ?? "Erreur de notification inconnue");
+      }
+    }),
+  );
+
+  return failures;
+}
 
 export async function createChallenge(formData: FormData) {
   const parsed = parseFormData(createChallengeSchema, formData);
@@ -51,63 +98,18 @@ export async function createChallenge(formData: FormData) {
 
   if (error) return { error: error.message };
 
-  const { error: pricingError } = await supabase.rpc(
-    "start_challenge_price_negotiation",
-    {
-      p_challenge_id: newChallenge.id,
-    },
-  );
-  if (pricingError) return { error: pricingError.message };
-
-  await notify(
+  const targetNotifResult = await notify(
     parsed.data.targetId,
     "challenge_received",
     "Nouveau défi !",
     `${profile?.username ?? "Quelqu'un"} t'a lancé le défi "${parsed.data.title}"`,
     { group_id: parsed.data.groupId, challenge_id: newChallenge.id },
   );
-
-  revalidatePath(`/g/${parsed.data.groupId}`);
-  return { success: true };
-}
-
-async function updateChallengeStatus(
-  challengeId: string,
-  expectedStatus: ChallengeStatus,
-  newStatus: ChallengeStatus,
-  role: "creator" | "target",
-) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return { error: "Non authentifié" };
-
-  const { data: challenge } = await supabase
-    .from("challenges")
-    .select("*")
-    .eq("id", challengeId)
-    .single();
-
-  if (!challenge) return { error: "Défi introuvable" };
-
-  const allowedUser =
-    role === "creator" ? challenge.creator_id : challenge.target_id;
-  if (allowedUser !== user.id) return { error: "Action non autorisée" };
-
-  if (challenge.status !== expectedStatus) {
-    return { error: "Statut invalide pour cette action" };
+  if ("error" in targetNotifResult) {
+    return { error: targetNotifResult.error ?? "Erreur de notification inconnue" };
   }
 
-  const { error } = await supabase
-    .from("challenges")
-    .update({ status: newStatus })
-    .eq("id", challengeId);
-
-  if (error) return { error: error.message };
-
-  revalidatePath(`/g/${challenge.group_id}`);
+  revalidatePath(`/g/${parsed.data.groupId}`);
   return { success: true };
 }
 
@@ -173,6 +175,77 @@ export async function acceptChallenge(
 
   revalidatePath(`/g/${challenge.group_id}`);
   return { success: true, boosted: !!boosterInventoryId };
+}
+
+export async function contestChallenge(challengeId: string) {
+  const parsed = contestChallengeSchema.safeParse({ challengeId });
+  if (!parsed.success) {
+    const msg = parsed.error.issues[0]?.message ?? "Données invalides";
+    return { error: msg };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Non authentifié" };
+
+  const { data: challenge } = await supabase
+    .from("challenges")
+    .select("group_id, creator_id, target_id, title")
+    .eq("id", challengeId)
+    .single();
+  if (!challenge) return { error: "Défi introuvable" };
+
+  const { data, error } = await supabase.rpc("start_challenge_contestation", {
+    p_challenge_id: challengeId,
+  });
+  if (error) {
+    if (error.message.includes("Not allowed")) {
+      return { error: "Seule la cible du défi peut contester" };
+    }
+    if (error.message.includes("Already contested")) {
+      return {
+        error:
+          "Ce défi a déjà été contesté une fois. Tu peux seulement l'accepter ou le refuser.",
+      };
+    }
+    if (error.message.includes("Invalid status")) {
+      return { error: "Le défi doit être proposé pour être contesté" };
+    }
+    if (error.message.includes("No eligible voters")) {
+      return {
+        error:
+          "Aucun membre disponible pour voter. Tu dois accepter ou refuser ce défi.",
+      };
+    }
+    return { error: error.message };
+  }
+
+  const validatorsResult = await getEligibleValidatorIds(
+    supabase,
+    challenge.group_id,
+    challenge.creator_id,
+    challenge.target_id,
+  );
+  if ("error" in validatorsResult) {
+    return { error: validatorsResult.error ?? "Erreur de notification inconnue" };
+  }
+
+  const validatorFailures = await notifyValidationRequest(
+    validatorsResult.validatorIds,
+    "challenge_contestation_requested",
+    "Contestation de défi",
+    `Le défi "${challenge.title}" est contesté. Vote: annulation ou contre-proposition.`,
+    { group_id: challenge.group_id, challenge_id: challengeId },
+  );
+  if (validatorFailures.length > 0) {
+    return { error: validatorFailures[0] };
+  }
+
+  revalidatePath(`/g/${challenge.group_id}`);
+  revalidatePath(`/g/${challenge.group_id}/challenges/${challengeId}`);
+  return { success: true, ...(data as Record<string, unknown>) };
 }
 
 export async function declineChallenge(
@@ -331,13 +404,37 @@ export async function submitProof(formData: FormData) {
 
   if (updateError) return { error: updateError.message };
 
-  await notify(
+  const creatorNotifResult = await notify(
     challenge.creator_id,
     "proof_submitted",
     "Preuve soumise",
     `Une preuve a été soumise pour le défi "${challenge.title}"`,
     { challenge_id: parsed.data.challengeId, group_id: challenge.group_id },
   );
+  if ("error" in creatorNotifResult) {
+    return { error: creatorNotifResult.error ?? "Erreur de notification inconnue" };
+  }
+
+  const validatorsResult = await getEligibleValidatorIds(
+    supabase,
+    challenge.group_id,
+    challenge.creator_id,
+    challenge.target_id,
+  );
+  if ("error" in validatorsResult) {
+    return { error: validatorsResult.error ?? "Erreur de notification inconnue" };
+  }
+
+  const validatorFailures = await notifyValidationRequest(
+    validatorsResult.validatorIds,
+    "proof_validation_requested",
+    "Validation de preuve requise",
+    `Le défi "${challenge.title}" attend ta validation de preuve.`,
+    { challenge_id: parsed.data.challengeId, group_id: challenge.group_id },
+  );
+  if (validatorFailures.length > 0) {
+    return { error: validatorFailures[0] };
+  }
 
   revalidatePath(`/g/${challenge.group_id}`);
   return { success: true };
@@ -415,7 +512,7 @@ export async function voteOnChallenge(challengeId: string, vote: string) {
 
 export async function voteChallengePrice(
   challengeId: string,
-  vote: "approve" | "reject",
+  vote: "counter" | "cancel" | "keep",
   counterPoints?: number,
 ): Promise<
   | { error: string }
@@ -426,6 +523,7 @@ export async function voteChallengePrice(
       proposed_points?: number;
       approvals?: number;
       rejections?: number;
+      keeps?: number;
       threshold?: number;
     }
 > {
@@ -443,25 +541,165 @@ export async function voteChallengePrice(
 
   const { data: challenge } = await supabase
     .from("challenges")
-    .select("group_id")
+    .select("group_id, title, creator_id, target_id")
     .eq("id", challengeId)
     .single();
 
-  const { data, error } = await supabase.rpc("vote_challenge_price", {
+  const { data, error } = await supabase.rpc("vote_challenge_contestation", {
     p_challenge_id: challengeId,
     p_vote: parsed.data.vote,
     p_counter_points: parsed.data.counterPoints ?? null,
   });
 
   if (error) {
-    if (error.message.includes("Not allowed to validate price")) {
-      return { error: "Seuls les autres membres (hors lanceur/cible) peuvent valider le tarif" };
+    if (error.message.includes("Not allowed to vote contestation")) {
+      return {
+        error:
+          "Seuls les autres membres (hors lanceur/cible) peuvent voter la contestation",
+      };
+    }
+    if (error.message.includes("Invalid status")) {
+      return { error: "Le défi n'est pas en phase de contestation" };
+    }
+    if (error.message.includes("Not a group member")) {
+      return { error: "Tu ne fais pas partie de ce groupe" };
+    }
+    if (error.message.includes("Invalid counter proposal")) {
+      return { error: "La contre-proposition doit être supérieure à 0" };
+    }
+    return { error: error.message };
+  }
+
+  const payload = (data ?? {}) as {
+    status?: string;
+    round?: number;
+    proposed_points?: number;
+    approvals?: number;
+    rejections?: number;
+    keeps?: number;
+    threshold?: number;
+    points?: number;
+  };
+
+  if (challenge?.group_id && payload.status === "counter_applied") {
+    const body = `Le tarif du défi "${challenge.title}" a été ajusté à ${payload.points ?? payload.proposed_points ?? "?"} pts après vote du groupe.`;
+    await Promise.all([
+      notify(
+        challenge.creator_id,
+        "challenge_counter_proposal_applied",
+        "Contestation résolue",
+        body,
+        { group_id: challenge.group_id, challenge_id: challengeId },
+      ),
+      notify(
+        challenge.target_id,
+        "challenge_counter_proposal_applied",
+        "Contestation résolue",
+        body,
+        { group_id: challenge.group_id, challenge_id: challengeId },
+      ),
+    ]);
+  } else if (
+    challenge?.group_id &&
+    payload.status === "cancelled_by_contestation"
+  ) {
+    const body = `Le défi "${challenge.title}" a été annulé après vote du groupe.`;
+    await Promise.all([
+      notify(
+        challenge.creator_id,
+        "challenge_cancelled_by_contestation",
+        "Défi annulé",
+        body,
+        { group_id: challenge.group_id, challenge_id: challengeId },
+      ),
+      notify(
+        challenge.target_id,
+        "challenge_cancelled_by_contestation",
+        "Défi annulé",
+        body,
+        { group_id: challenge.group_id, challenge_id: challengeId },
+      ),
+    ]);
+  } else if (challenge?.group_id && payload.status === "kept_by_contestation") {
+    const body = `Le défi "${challenge.title}" est maintenu tel quel après vote du groupe (${payload.points ?? "?"} pts).`;
+    await Promise.all([
+      notify(
+        challenge.creator_id,
+        "challenge_kept_by_contestation",
+        "Contestation résolue",
+        body,
+        { group_id: challenge.group_id, challenge_id: challengeId },
+      ),
+      notify(
+        challenge.target_id,
+        "challenge_kept_by_contestation",
+        "Contestation résolue",
+        body,
+        { group_id: challenge.group_id, challenge_id: challengeId },
+      ),
+    ]);
+  }
+
+  if (challenge?.group_id) {
+    revalidatePath(`/g/${challenge.group_id}`);
+    revalidatePath(`/g/${challenge.group_id}/challenges/${challengeId}`);
+  }
+
+  return { success: true, ...payload };
+}
+
+export async function creatorDecideCounterProposal(
+  challengeId: string,
+  action: "accept" | "counter",
+  counterPoints?: number,
+): Promise<
+  | { error: string }
+  | {
+      success: true;
+      status?: string;
+      round?: number;
+      proposed_points?: number;
+      approvals?: number;
+      rejections?: number;
+      threshold?: number;
+    }
+> {
+  const parsed = creatorDecideCounterProposalSchema.safeParse({
+    challengeId,
+    action,
+    counterPoints: counterPoints ?? null,
+  });
+  if (!parsed.success) {
+    const msg = parsed.error.issues[0]?.message ?? "Données invalides";
+    return { error: msg };
+  }
+
+  const supabase = await createClient();
+
+  const { data: challenge } = await supabase
+    .from("challenges")
+    .select("group_id")
+    .eq("id", challengeId)
+    .single();
+
+  const { data, error } = await supabase.rpc("creator_decide_counter_proposal", {
+    p_challenge_id: challengeId,
+    p_action: parsed.data.action,
+    p_counter_points: parsed.data.counterPoints ?? null,
+  });
+
+  if (error) {
+    if (error.message.includes("Not allowed")) {
+      return { error: "Seul le lanceur peut décider de la contre-proposition" };
     }
     if (error.message.includes("Invalid status")) {
       return { error: "Le défi n'est plus en phase de négociation" };
     }
-    if (error.message.includes("Not a group member")) {
-      return { error: "Tu ne fais pas partie de ce groupe" };
+    if (error.message.includes("Invalid action")) {
+      return { error: "Action invalide" };
+    }
+    if (error.message.includes("No active negotiation round")) {
+      return { error: "Aucun tour de négociation actif" };
     }
     if (error.message.includes("Invalid counter proposal")) {
       return { error: "La contre-proposition doit être supérieure à 0" };
@@ -507,10 +745,16 @@ export async function cancelChallengeByCreator(challengeId: string) {
 
   if (error) {
     if (error.message.includes("Not allowed")) {
-      return { error: "Seul le lanceur du défi peut annuler cette négociation" };
+      return { error: "Seul le lanceur du défi peut annuler ce défi" };
+    }
+    if (error.message.includes("Proof validation pending")) {
+      return {
+        error:
+          "Impossible d'annuler pendant la validation de preuve en cours.",
+      };
     }
     if (error.message.includes("Invalid status")) {
-      return { error: "Le défi n'est pas en négociation" };
+      return { error: "Ce défi ne peut plus être annulé" };
     }
     return { error: error.message };
   }
@@ -549,6 +793,7 @@ export async function getChallengePriceState(challengeId: string) {
     proposed_by?: string;
     approvals?: number;
     rejections?: number;
+    keeps?: number;
     threshold?: number;
     validators_count?: number;
     user_vote?: string | null;

@@ -22,6 +22,12 @@ const TYPE_CONFIG: Record<
   challenge_validated: { icon: CheckCircle, color: "text-green-500" },
   challenge_rejected: { icon: XCircle, color: "text-red-500" },
   proof_submitted: { icon: FileText, color: "text-purple-500" },
+  price_validation_requested: { icon: Bell, color: "text-orange-500" },
+  challenge_contestation_requested: { icon: Bell, color: "text-orange-500" },
+  challenge_counter_proposal_applied: { icon: CheckCircle, color: "text-green-500" },
+  challenge_cancelled_by_contestation: { icon: XCircle, color: "text-red-500" },
+  challenge_kept_by_contestation: { icon: CheckCircle, color: "text-blue-500" },
+  proof_validation_requested: { icon: FileText, color: "text-indigo-500" },
 };
 
 interface NotificationItemProps {

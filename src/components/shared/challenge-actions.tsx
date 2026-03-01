@@ -14,9 +14,10 @@ import { Progress } from "@/components/ui/progress";
 import {
   acceptChallenge,
   declineChallenge,
+  cancelChallengeByCreator,
+  contestChallenge,
   voteOnChallenge,
   voteChallengePrice,
-  cancelChallengeByCreator,
   getDeclineInfo,
 } from "@/app/(app)/challenges/actions";
 import type { ChallengeStatus } from "@/types/database.types";
@@ -37,6 +38,7 @@ export interface PriceNegotiationState {
   proposed_points?: number;
   approvals?: number;
   rejections?: number;
+  keeps?: number;
   threshold?: number;
   validators_count?: number;
   user_vote?: string | null;
@@ -49,13 +51,13 @@ interface ChallengeActionsProps {
   isCreator: boolean;
   isTarget: boolean;
   points: number;
-  groupId: string;
   hasBoosted?: boolean;
   availableBoosters?: { id: string }[];
   voteInfo?: VoteInfo | null;
   isMember?: boolean;
   isValidator?: boolean;
   priceState?: PriceNegotiationState | null;
+  canContest?: boolean;
 }
 
 type DeclineInfoState = {
@@ -71,13 +73,13 @@ export function ChallengeActions({
   isCreator,
   isTarget,
   points,
-  groupId,
   hasBoosted,
   availableBoosters = [],
   voteInfo,
   isMember,
   isValidator = false,
   priceState,
+  canContest = true,
 }: ChallengeActionsProps) {
   const [declineDialogOpen, setDeclineDialogOpen] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
@@ -212,10 +214,10 @@ export function ChallengeActions({
     });
   };
 
-  const handlePriceVote = (vote: "approve" | "reject", withCounter = false) => {
+  const handlePriceVote = (vote: "counter" | "cancel" | "keep") => {
     startTransition(async () => {
       let nextCounter: number | undefined;
-      if (withCounter) {
+      if (vote === "counter") {
         const parsed = Number(counterPoints);
         if (!Number.isInteger(parsed) || parsed <= 0) {
           toast.error("La contre-proposition doit être un nombre entier positif");
@@ -230,10 +232,12 @@ export function ChallengeActions({
         return;
       }
 
-      if (result.status === "price_validated") {
-        toast.success("Tarif validé par les validateurs");
-      } else if (result.status === "countered") {
-        toast.info("Contre-proposition envoyée, nouveau tour ouvert");
+      if (result.status === "counter_applied") {
+        toast.success("Contre-proposition validée par le groupe");
+      } else if (result.status === "cancelled_by_contestation") {
+        toast.info("Le défi est annulé après contestation");
+      } else if (result.status === "kept_by_contestation") {
+        toast.success("Le défi est maintenu tel quel");
       } else {
         toast.success("Vote enregistré");
       }
@@ -250,10 +254,15 @@ export function ChallengeActions({
         ...(typeof result.rejections === "number"
           ? { rejections: result.rejections }
           : {}),
+        ...(typeof result.keeps === "number" ? { keeps: result.keeps } : {}),
         ...(typeof result.threshold === "number"
           ? { threshold: result.threshold }
           : {}),
-        user_vote: vote,
+        ...(result.status === "counter_applied" ||
+        result.status === "cancelled_by_contestation" ||
+        result.status === "kept_by_contestation"
+          ? {}
+          : { user_vote: vote }),
       } as PriceNegotiationState;
 
       setCurrentPriceState(refreshed);
@@ -263,7 +272,18 @@ export function ChallengeActions({
     });
   };
 
-  const handleCreatorCancelNegotiation = () => {
+  const handleContestClick = () => {
+    startTransition(async () => {
+      const result = await contestChallenge(challengeId);
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success("Contestation envoyée au groupe");
+    });
+  };
+
+  const handleCreatorCancel = () => {
     startTransition(async () => {
       const result = await cancelChallengeByCreator(challengeId);
       if ("error" in result) {
@@ -279,17 +299,23 @@ export function ChallengeActions({
     const votes = ps?.votes ?? [];
     const approvals = ps?.approvals ?? 0;
     const rejections = ps?.rejections ?? 0;
+    const keeps = ps?.keeps ?? 0;
     const threshold = ps?.threshold ?? 0;
-    const proposedPoints = ps?.proposed_points ?? points;
-
     if (isTarget) {
       return (
         <div className="space-y-3">
           <div className="flex items-center gap-2 rounded-lg bg-muted p-4 text-sm text-muted-foreground">
             <Clock className="size-4 shrink-0" />
-            Le tarif est en cours de validation par les autres membres.
+            La contestation est en cours de vote par les autres membres.
           </div>
-          {ps && <PriceProgress approvals={approvals} rejections={rejections} threshold={threshold} />}
+          {ps && (
+            <PriceProgress
+              approvals={approvals}
+              rejections={rejections}
+              keeps={keeps}
+              threshold={threshold}
+            />
+          )}
         </div>
       );
     }
@@ -297,18 +323,24 @@ export function ChallengeActions({
     if (isCreator) {
       return (
         <div className="space-y-3">
-          <div className="rounded-lg border p-3 text-sm">
-            <p className="font-medium">Négociation du tarif en cours</p>
-            <p className="text-muted-foreground">
-              Tour {ps?.round ?? 1} · Proposition actuelle: {proposedPoints} pts
-            </p>
+          <div className="flex items-center gap-2 rounded-lg bg-muted p-4 text-sm text-muted-foreground">
+            <Clock className="size-4 shrink-0" />
+            Contestation en cours, en attente du vote des autres membres.
           </div>
-          {ps && <PriceProgress approvals={approvals} rejections={rejections} threshold={threshold} />}
+          {ps && (
+            <PriceProgress
+              approvals={approvals}
+              rejections={rejections}
+              keeps={keeps}
+              threshold={threshold}
+              validatorsCount={ps.validators_count}
+            />
+          )}
           <Button
             variant="destructive"
             className="w-full"
             disabled={isPending}
-            onClick={handleCreatorCancelNegotiation}
+            onClick={handleCreatorCancel}
           >
             <X className="mr-1 size-4" />
             {isPending ? "..." : "Annuler le défi"}
@@ -329,37 +361,54 @@ export function ChallengeActions({
     return (
       <div className="space-y-3">
         <div className="rounded-lg border p-3 text-sm">
-          <p className="font-medium">Validation du tarif</p>
+          <p className="font-medium">Vote de contestation</p>
           <p className="text-muted-foreground">
-            Tour {ps?.round ?? 1} · Proposition actuelle: {proposedPoints} pts
+            Choisis entre annuler le défi, le maintenir tel quel, ou proposer un nouveau tarif.
           </p>
         </div>
 
-        {ps && <PriceProgress approvals={approvals} rejections={rejections} threshold={threshold} />}
+        {ps && (
+          <PriceProgress
+            approvals={approvals}
+            rejections={rejections}
+            keeps={keeps}
+            threshold={threshold}
+            validatorsCount={ps.validators_count}
+          />
+        )}
 
         <div className="flex gap-2">
           <Button
             className="flex-1"
-            variant={ps?.user_vote === "approve" ? "default" : "outline"}
+            variant={ps?.user_vote === "keep" ? "default" : "outline"}
             disabled={isPending}
-            onClick={() => handlePriceVote("approve")}
+            onClick={() => handlePriceVote("keep")}
           >
-            <ThumbsUp className="mr-1 size-4" />
-            {isPending ? "..." : "Valider tarif"}
+            <Check className="mr-1 size-4" />
+            {isPending ? "..." : "Maintenir tel quel"}
           </Button>
           <Button
             className="flex-1"
-            variant={ps?.user_vote === "reject" ? "destructive" : "outline"}
+            variant={ps?.user_vote === "counter" ? "default" : "outline"}
             disabled={isPending}
-            onClick={() => handlePriceVote("reject")}
+            onClick={() => handlePriceVote("counter")}
+          >
+            <ThumbsUp className="mr-1 size-4" />
+            {isPending ? "..." : "Contre-proposer"}
+          </Button>
+          <Button
+            className="flex-1"
+            variant={ps?.user_vote === "cancel" ? "destructive" : "outline"}
+            disabled={isPending}
+            onClick={() => handlePriceVote("cancel")}
           >
             <ThumbsDown className="mr-1 size-4" />
-            {isPending ? "..." : "Refuser tarif"}
+            {isPending ? "..." : "Demander annulation"}
           </Button>
         </div>
 
         <div className="rounded-lg border p-3 space-y-2">
-          <p className="text-sm font-medium">Faire une contre-proposition</p>
+          <p className="text-sm font-medium">Montant de contre-proposition</p>
           <div className="flex items-center gap-2">
             <input
               type="number"
@@ -372,20 +421,12 @@ export function ChallengeActions({
           </div>
           <div className="flex gap-2">
             <Button
-              className="flex-1"
+              className="w-full"
               variant="outline"
               disabled={isPending}
-              onClick={() => handlePriceVote("approve", true)}
+              onClick={() => handlePriceVote("counter")}
             >
-              Approuver + proposer
-            </Button>
-            <Button
-              className="flex-1"
-              variant="outline"
-              disabled={isPending}
-              onClick={() => handlePriceVote("reject", true)}
-            >
-              Refuser + proposer
+              Envoyer ma contre-proposition
             </Button>
           </div>
         </div>
@@ -394,8 +435,10 @@ export function ChallengeActions({
           <div className="text-xs text-muted-foreground space-y-0.5">
             {votes.map((v) => (
               <div key={v.voter_id} className="flex items-center gap-1">
-                {v.vote === "approve" ? (
+                {v.vote === "counter" ? (
                   <ThumbsUp className="size-3 text-green-500" />
+                ) : v.vote === "keep" ? (
+                  <Check className="size-3 text-blue-500" />
                 ) : (
                   <ThumbsDown className="size-3 text-red-500" />
                 )}
@@ -431,6 +474,21 @@ export function ChallengeActions({
               {isPending ? "..." : "Refuser"}
             </Button>
           </div>
+          {canContest ? (
+            <Button
+              variant="outline"
+              className="w-full"
+              disabled={isPending}
+              onClick={handleContestClick}
+            >
+              <AlertTriangle className="mr-1 size-4" />
+              {isPending ? "..." : "Contester"}
+            </Button>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Contestation déjà utilisée pour ce défi. Tu peux accepter ou refuser.
+            </p>
+          )}
         </div>
 
         <Dialog open={declineDialogOpen} onOpenChange={setDeclineDialogOpen}>
@@ -531,9 +589,20 @@ export function ChallengeActions({
 
   if (status === "proposed" && isCreator) {
     return (
-      <div className="flex items-center gap-2 rounded-lg bg-muted p-4 text-sm text-muted-foreground">
-        <Clock className="size-4 shrink-0" />
-        En attente de la réponse...
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 rounded-lg bg-muted p-4 text-sm text-muted-foreground">
+          <Clock className="size-4 shrink-0" />
+          En attente de la réponse...
+        </div>
+        <Button
+          variant="destructive"
+          className="w-full"
+          disabled={isPending}
+          onClick={handleCreatorCancel}
+        >
+          <X className="mr-1 size-4" />
+          {isPending ? "..." : "Annuler le défi"}
+        </Button>
       </div>
     );
   }
@@ -562,7 +631,7 @@ export function ChallengeActions({
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <AlertTriangle className="size-5 text-orange-500" />
-                Confirmer l'annulation
+                Confirmer l&apos;annulation
               </DialogTitle>
               <DialogDescription>
                 {cancelInfo?.isFree
@@ -593,7 +662,7 @@ export function ChallengeActions({
                 {isPending
                   ? "..."
                   : cancelInfo?.isFree
-                    ? "Confirmer l'annulation"
+                    ? "Confirmer l&apos;annulation"
                     : `Annuler et perdre ${cancelInfo?.penalty ?? 0} pts`}
               </Button>
               <Button
@@ -613,14 +682,45 @@ export function ChallengeActions({
 
   if (status === "accepted" && isCreator) {
     return (
-      <div className="flex items-center gap-2 rounded-lg bg-muted p-4 text-sm text-muted-foreground">
-        <Clock className="size-4 shrink-0" />
-        En attente de la preuve...
-        {hasBoosted && (
-          <span className="ml-auto flex items-center gap-1 text-yellow-600 dark:text-yellow-400">
-            <Zap className="size-3.5" /> x2
-          </span>
-        )}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 rounded-lg bg-muted p-4 text-sm text-muted-foreground">
+          <Clock className="size-4 shrink-0" />
+          En attente de la preuve...
+          {hasBoosted && (
+            <span className="ml-auto flex items-center gap-1 text-yellow-600 dark:text-yellow-400">
+              <Zap className="size-3.5" /> x2
+            </span>
+          )}
+        </div>
+        <Button
+          variant="destructive"
+          className="w-full"
+          disabled={isPending}
+          onClick={handleCreatorCancel}
+        >
+          <X className="mr-1 size-4" />
+          {isPending ? "..." : "Annuler le défi"}
+        </Button>
+      </div>
+    );
+  }
+
+  if (status === "in_progress" && isCreator) {
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 rounded-lg bg-muted p-4 text-sm text-muted-foreground">
+          <Clock className="size-4 shrink-0" />
+          Défi en cours...
+        </div>
+        <Button
+          variant="destructive"
+          className="w-full"
+          disabled={isPending}
+          onClick={handleCreatorCancel}
+        >
+          <X className="mr-1 size-4" />
+          {isPending ? "..." : "Annuler le défi"}
+        </Button>
       </div>
     );
   }
@@ -741,38 +841,56 @@ function VoteProgress({ voteInfo }: { voteInfo: VoteInfo }) {
 function PriceProgress({
   approvals,
   rejections,
+  keeps,
   threshold,
+  validatorsCount,
 }: {
   approvals: number;
   rejections: number;
+  keeps: number;
   threshold: number;
+  validatorsCount?: number;
 }) {
   const safeThreshold = Math.max(1, threshold);
-  const approvalPct = Math.min(100, Math.round((approvals / safeThreshold) * 100));
-  const rejectionPct = Math.min(100, Math.round((rejections / safeThreshold) * 100));
+  const counterPct = Math.min(100, Math.round((approvals / safeThreshold) * 100));
+  const keepPct = Math.min(100, Math.round((keeps / safeThreshold) * 100));
+  const cancelPct = Math.min(100, Math.round((rejections / safeThreshold) * 100));
+  const thresholdLabel =
+    typeof validatorsCount === "number" && validatorsCount < 3
+      ? `Seuil : tous les ${validatorsCount} votants`
+      : "Seuil : 3 votes";
 
   return (
     <div className="space-y-2 rounded-lg border p-3">
-      <div className="flex items-center justify-between text-sm">
-        <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
-          <ThumbsUp className="size-3.5" />
-          {approvals}/{safeThreshold}
-        </span>
-        <span className="text-xs text-muted-foreground">
-          Seuil : {threshold} validation{threshold > 1 ? "s" : ""}
-        </span>
-        <span className="flex items-center gap-1 text-red-600 dark:text-red-400">
-          {rejections}
-          <ThumbsDown className="size-3.5" />
-        </span>
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span>{thresholdLabel}</span>
+        <span>{safeThreshold} vote{safeThreshold > 1 ? "s" : ""} requis</span>
       </div>
-      <div className="flex gap-2">
-        <div className="flex-1">
-          <Progress value={approvalPct} className="h-2 [&>div]:bg-green-500" />
+      <div className="space-y-2">
+        <div className="flex items-center justify-between text-sm">
+          <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
+            <Check className="size-3.5" />
+            Maintien
+          </span>
+          <span className="text-xs">{keeps}/{safeThreshold}</span>
         </div>
-        <div className="flex-1">
-          <Progress value={rejectionPct} className="h-2 [&>div]:bg-red-500" />
+        <Progress value={keepPct} className="h-2 [&>div]:bg-blue-500" />
+        <div className="flex items-center justify-between text-sm">
+          <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
+            <ThumbsUp className="size-3.5" />
+            Contre-proposition
+          </span>
+          <span className="text-xs">{approvals}/{safeThreshold}</span>
         </div>
+        <Progress value={counterPct} className="h-2 [&>div]:bg-green-500" />
+        <div className="flex items-center justify-between text-sm">
+          <span className="flex items-center gap-1 text-red-600 dark:text-red-400">
+            <ThumbsDown className="size-3.5" />
+            Annulation
+          </span>
+          <span className="text-xs">{rejections}/{safeThreshold}</span>
+        </div>
+        <Progress value={cancelPct} className="h-2 [&>div]:bg-red-500" />
       </div>
     </div>
   );

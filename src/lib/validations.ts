@@ -24,7 +24,8 @@ export const submitProofSchema = z.object({
       (url) => url.includes(".supabase.co/storage/"),
       "URL de média invalide",
     )
-    .nullable(),
+    .nullable()
+    .optional(),
 });
 
 export const createGroupSchema = z.object({
@@ -48,6 +49,12 @@ export const updateGroupSchema = z.object({
 
 export const deleteGroupSchema = z.object({
   groupId: uuid,
+  groupNameConfirmation: z.string().min(1, "Le nom du groupe est requis"),
+});
+
+export const resetGroupSchema = z.object({
+  groupId: uuid,
+  groupNameConfirmation: z.string().min(1, "Le nom du groupe est requis"),
 });
 
 export const transferGroupOwnershipSchema = z.object({
@@ -88,7 +95,32 @@ export const voteOnChallengeSchema = z.object({
 
 export const voteChallengePriceSchema = z.object({
   challengeId: uuid,
-  vote: z.enum(["approve", "reject"], { message: "Vote invalide" }),
+  vote: z.enum(["counter", "cancel", "keep"], { message: "Vote invalide" }),
+  counterPoints: z.number().int().min(1, "La contre-proposition doit être positive").nullable(),
+}).superRefine((data, ctx) => {
+  if (data.vote === "counter" && data.counterPoints == null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Un montant est requis pour une contre-proposition",
+      path: ["counterPoints"],
+    });
+  }
+  if ((data.vote === "cancel" || data.vote === "keep") && data.counterPoints != null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Aucun montant n'est attendu pour ce vote",
+      path: ["counterPoints"],
+    });
+  }
+});
+
+export const contestChallengeSchema = z.object({
+  challengeId: uuid,
+});
+
+export const creatorDecideCounterProposalSchema = z.object({
+  challengeId: uuid,
+  action: z.enum(["accept", "counter"], { message: "Action invalide" }),
   counterPoints: z.number().int().min(1, "La contre-proposition doit être positive").nullable(),
 });
 
