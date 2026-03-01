@@ -4,6 +4,7 @@ import { getMyInventory } from "@/app/(app)/groups/[id]/shop-actions";
 import { getAllBadges, getMyBadges, getBadgeProgress } from "./badge-actions";
 import { EditProfileDialog } from "./edit-profile-dialog";
 import { PushToggle } from "@/app/(app)/notifications/push-toggle";
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -44,31 +45,22 @@ function getItemUsageHint(itemType: string): { status: string; cta: "open-challe
   return { status: "Utilisable dans un contexte de défi", cta: "open-challenges" };
 }
 
-function groupByGroupName(items: InventoryItem[]) {
-  const groups: Record<string, { groupName: string; items: InventoryItem[] }> = {};
+function getItemGroup(item: InventoryItem): { groupId: string | null; groupName: string | null } {
+  const shopItem = item.shop_items as
+    | {
+        name: string;
+        description: string | null;
+        price: number;
+        item_type: string;
+        group_id: string;
+        groups: { name: string } | null;
+      }
+    | null;
 
-  for (const item of items) {
-    const shopItem = item.shop_items as {
-      name: string;
-      description: string | null;
-      price: number;
-      item_type: string;
-      group_id: string;
-      groups: { name: string } | null;
-    } | null;
-
-    const groupName = shopItem?.groups?.name ?? "Inconnu";
-    const groupId = shopItem?.group_id ?? "unknown";
-
-    let group = groups[groupId];
-    if (!group) {
-      group = { groupName, items: [] };
-      groups[groupId] = group;
-    }
-    group.items.push(item);
-  }
-
-  return Object.values(groups);
+  return {
+    groupId: shopItem?.group_id ?? null,
+    groupName: shopItem?.groups?.name ?? null,
+  };
 }
 
 export default async function ProfilePage() {
@@ -91,8 +83,17 @@ export default async function ProfilePage() {
     getBadgeProgress(),
   ]);
 
+  const cookieStore = await cookies();
+  const selectedGroupId = cookieStore.get("lastGroupId")?.value?.trim() || null;
+
+  const filteredInventory = selectedGroupId
+    ? inventory.filter((item) => getItemGroup(item).groupId === selectedGroupId)
+    : [];
+  const selectedGroupName = filteredInventory.length > 0
+    ? getItemGroup(filteredInventory[0]).groupName
+    : null;
+
   const earnedBadgeIds = new Set(myBadges.map((ub) => ub.badge_id));
-  const groupedInventory = groupByGroupName(inventory);
 
   return (
     <main className="px-4 pt-8">
@@ -159,89 +160,87 @@ export default async function ProfilePage() {
 
       <section>
         <h2 className="mb-4 text-lg font-semibold">
-          Mon inventaire ({inventory.length})
+          Mon inventaire ({filteredInventory.length})
         </h2>
-        {inventory.length === 0 ? (
+        {filteredInventory.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-8 text-center">
             <Package className="size-6 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">
-              Aucun item acheté pour le moment.
+              {!selectedGroupId
+                ? "Aucun groupe actif sélectionné. Ouvre un groupe pour filtrer ton inventaire."
+                : "Aucun item disponible pour le groupe sélectionné."}
             </p>
           </div>
         ) : (
-          <div className="space-y-6">
-            {groupedInventory.map((group) => (
-              <div key={group.groupName}>
-                <h3 className="mb-2 text-sm font-medium text-muted-foreground">
-                  {group.groupName}
-                </h3>
-                <div className="space-y-2">
-                  {group.items.map((item) => {
-                    const shopItem = item.shop_items as {
-                      name: string;
-                      description: string | null;
-                      price: number;
-                      item_type: string;
-                      group_id: string;
-                      groups: { name: string } | null;
-                    } | null;
+          <div className="space-y-2">
+            {selectedGroupName && (
+              <h3 className="mb-2 text-sm font-medium text-muted-foreground">
+                {selectedGroupName}
+              </h3>
+            )}
+            {filteredInventory.map((item) => {
+              const shopItem = item.shop_items as {
+                name: string;
+                description: string | null;
+                price: number;
+                item_type: string;
+                group_id: string;
+                groups: { name: string } | null;
+              } | null;
 
-                    const isUsed = !!item.used_at;
-                    const itemType = shopItem?.item_type ?? "custom";
-                    const usageHint = getItemUsageHint(itemType);
-                    const groupId = shopItem?.group_id ?? null;
+              const isUsed = !!item.used_at;
+              const itemType = shopItem?.item_type ?? "custom";
+              const usageHint = getItemUsageHint(itemType);
+              const groupId = shopItem?.group_id ?? null;
 
-                    return (
-                      <div
-                        key={item.id}
-                        className={`flex items-center justify-between rounded-lg border p-3 ${isUsed ? "opacity-50" : ""}`}
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="shrink-0">
-                            {isUsed ? (
-                              <CheckCircle2 className="size-4 text-muted-foreground" />
-                            ) : (
-                              <Circle className="size-4 text-green-500" />
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="font-medium truncate">
-                                {shopItem?.name ?? "Item inconnu"}
-                              </p>
-                              <StoreItemCategoryBadge itemType={itemType} className="text-xs" />
-                            </div>
-                            <p className="text-xs text-muted-foreground">
-                              {isUsed && item.used_at
-                                ? `Utilisé le ${new Date(item.used_at).toLocaleDateString("fr-FR")}`
-                                : "Disponible"}
-                            </p>
-                            {!isUsed && (
-                              <p className="text-xs text-muted-foreground">
-                                {usageHint.status}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        <div className="shrink-0 ml-2 flex flex-col items-end gap-1">
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(item.purchased_at).toLocaleDateString("fr-FR")}
-                          </p>
-                          {!isUsed && usageHint.cta === "open-challenges" && groupId && (
-                            <Link
-                              href={`/g/${groupId}/challenges`}
-                              className="text-xs text-primary underline-offset-2 hover:underline"
-                            >
-                              Ouvrir les défis
-                            </Link>
-                          )}
-                        </div>
+              return (
+                <div
+                  key={item.id}
+                  className={`flex items-center justify-between rounded-lg border p-3 ${isUsed ? "opacity-50" : ""}`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="shrink-0">
+                      {isUsed ? (
+                        <CheckCircle2 className="size-4 text-muted-foreground" />
+                      ) : (
+                        <Circle className="size-4 text-green-500" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium truncate">
+                          {shopItem?.name ?? "Item inconnu"}
+                        </p>
+                        <StoreItemCategoryBadge itemType={itemType} className="text-xs" />
                       </div>
-                    );
-                  })}
+                      <p className="text-xs text-muted-foreground">
+                        {isUsed && item.used_at
+                          ? `Utilisé le ${new Date(item.used_at).toLocaleDateString("fr-FR")}`
+                          : "Disponible"}
+                      </p>
+                      {!isUsed && (
+                        <p className="text-xs text-muted-foreground">
+                          {usageHint.status}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="shrink-0 ml-2 flex flex-col items-end gap-1">
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(item.purchased_at).toLocaleDateString("fr-FR")}
+                    </p>
+                    {!isUsed && usageHint.cta === "open-challenges" && groupId && (
+                      <Link
+                        href={`/g/${groupId}/challenges`}
+                        className="text-xs text-primary underline-offset-2 hover:underline"
+                      >
+                        Ouvrir les défis
+                      </Link>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>

@@ -38,7 +38,7 @@ function ResponsivePanelContent({
   return (
     <DialogContent
       className={cn(
-        "!top-auto !right-0 !bottom-0 !left-0 !max-w-none !translate-x-0 !translate-y-0 rounded-t-2xl rounded-b-none border-x-0 border-b-0 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] data-[state=open]:slide-in-from-bottom-full data-[state=closed]:slide-out-to-bottom-full sm:!top-[50%] sm:!right-auto sm:!bottom-auto sm:!left-[50%] sm:!max-w-lg sm:!-translate-x-1/2 sm:!-translate-y-1/2 sm:rounded-lg sm:border sm:p-6 sm:pb-6 sm:data-[state=open]:zoom-in-95 sm:data-[state=closed]:zoom-out-95 max-h-[85dvh] overflow-y-auto sm:max-h-[90dvh]",
+        "!top-auto !right-0 !bottom-0 !left-0 !max-w-none !translate-x-0 !translate-y-0 w-full max-w-[100dvw] rounded-t-2xl rounded-b-none border-x-0 border-b-0 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] data-[state=open]:slide-in-from-bottom-full data-[state=closed]:slide-out-to-bottom-full sm:!top-[50%] sm:!right-auto sm:!bottom-auto sm:!left-[50%] sm:!max-w-lg sm:!-translate-x-1/2 sm:!-translate-y-1/2 sm:rounded-lg sm:border sm:p-6 sm:pb-6 sm:data-[state=open]:zoom-in-95 sm:data-[state=closed]:zoom-out-95 max-h-[85dvh] overflow-y-auto overflow-x-hidden break-words [&>*]:min-w-0 sm:max-h-[90dvh]",
         className,
       )}
       {...props}
