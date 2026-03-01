@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { InviteCodeSection } from "@/app/(app)/groups/[id]/invite-code-section";
 import { LeaveGroupButton } from "@/app/(app)/groups/[id]/leave-group-button";
 import { ShopItemCard } from "@/components/shared/shop-item-card";
@@ -11,19 +12,12 @@ import { Leaderboard } from "@/components/shared/leaderboard";
 import { GroupSwitcher } from "@/components/shared/group-switcher";
 import { getMyGroups } from "@/app/(app)/groups/actions";
 import { GroupAdminActions } from "@/app/(app)/groups/[id]/group-admin-actions";
-import {
-  Crown,
-  Shield,
-  User,
-  ShoppingBag,
-  Trophy,
-  Users,
-} from "lucide-react";
+import { ShoppingBag, Trophy, Users } from "lucide-react";
 
 const ROLE_CONFIG = {
-  owner: { label: "Fondateur", icon: Crown, variant: "default" as const },
-  admin: { label: "Admin", icon: Shield, variant: "secondary" as const },
-  member: { label: "Membre", icon: User, variant: "outline" as const },
+  owner: { label: "Fondateur", variant: "default" as const },
+  admin: { label: "Admin", variant: "secondary" as const },
+  member: { label: "Membre", variant: "outline" as const },
 };
 
 export default async function GroupManagePage({
@@ -55,19 +49,17 @@ export default async function GroupManagePage({
         .order("joined_at", { ascending: true }),
       getShopItems(groupId),
       getMyGroups(),
-      supabase
-        .from("members")
-        .select("profile_id, profiles(username, total_points)")
-        .eq("group_id", groupId),
+      supabase.rpc("get_group_points_leaderboard", {
+        p_group_id: groupId,
+      }),
     ]);
 
   const leaderboardEntries = (leaderboardData ?? [])
     .map((m) => {
-      const profile = m.profiles as { username: string; total_points: number } | null;
       return {
         profileId: m.profile_id,
-        username: profile?.username ?? "Utilisateur",
-        totalPoints: profile?.total_points ?? 0,
+        username: m.username ?? "Utilisateur",
+        totalPoints: m.group_points ?? 0,
       };
     })
     .sort((a, b) => b.totalPoints - a.totalPoints);
@@ -193,11 +185,12 @@ export default async function GroupManagePage({
         <div className="space-y-3">
           {members?.map((member) => {
             const config = ROLE_CONFIG[member.role];
-            const RoleIcon = config.icon;
             const profile = member.profiles as {
               username: string;
               avatar_url: string | null;
             } | null;
+            const username = profile?.username ?? "Utilisateur";
+            const fallbackInitial = username.charAt(0).toUpperCase();
 
             return (
               <div
@@ -205,13 +198,15 @@ export default async function GroupManagePage({
                 className="flex items-center justify-between rounded-lg border p-3"
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex size-9 items-center justify-center rounded-full bg-muted">
-                    <RoleIcon className="size-4 text-muted-foreground" />
-                  </div>
+                  <Avatar className="size-9">
+                    <AvatarImage
+                      src={profile?.avatar_url ?? undefined}
+                      alt={username}
+                    />
+                    <AvatarFallback>{fallbackInitial}</AvatarFallback>
+                  </Avatar>
                   <div>
-                    <p className="font-medium">
-                      {profile?.username ?? "Utilisateur"}
-                    </p>
+                    <p className="font-medium">{username}</p>
                     <p className="text-xs text-muted-foreground">
                       Rejoint le{" "}
                       {new Date(member.joined_at).toLocaleDateString("fr-FR")}
@@ -232,6 +227,7 @@ export default async function GroupManagePage({
             groupId={groupId}
             name={group.name}
             description={group.description}
+            isOwner={isOwner}
             members={(members ?? []).map((member) => ({
               profileId: member.profile_id,
               username:

@@ -9,7 +9,7 @@ const STATUS_CONFIG: Record<
   { label: string; variant: "default" | "secondary" | "outline" | "destructive" }
 > = {
   proposed: { label: "Proposé", variant: "outline" },
-  negotiating: { label: "Tarif en négociation", variant: "outline" },
+  negotiating: { label: "Contestation en cours", variant: "outline" },
   accepted: { label: "Accepté", variant: "secondary" },
   in_progress: { label: "En cours", variant: "secondary" },
   proof_submitted: { label: "Preuve soumise", variant: "default" },

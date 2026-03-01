@@ -22,6 +22,7 @@ export default async function GroupHomePage({
   const { groupId } = await params;
   const {
     profile,
+    currentGroupPoints,
     pendingActions,
     recentActivity,
     leaderboard,
@@ -45,7 +46,7 @@ export default async function GroupHomePage({
         <div className="flex items-center gap-2 rounded-lg bg-muted px-4 py-2">
           <Coins className="size-5 text-yellow-500" />
           <span className="text-2xl font-bold">
-            {profile?.total_points ?? 0}
+            {currentGroupPoints}
           </span>
           <span className="text-sm text-muted-foreground">pts</span>
         </div>
@@ -63,22 +64,35 @@ export default async function GroupHomePage({
               </h2>
             </div>
             <div className="space-y-2">
-              {pendingActions.map((c) => (
-                <ChallengeCard
-                  key={c.id}
-                  id={c.id}
-                  title={c.title}
-                  points={c.points}
-                  status={c.status}
-                  creatorName={
-                    (c.creator as { username: string })?.username ?? "?"
-                  }
-                  targetName={
-                    (c.target as { username: string })?.username ?? "?"
-                  }
-                  groupId={groupId}
-                />
-              ))}
+              {pendingActions.map(({ kind, challenge }) => {
+                const pendingLabel =
+                  kind === "price_validation"
+                    ? "Vote de contestation requis"
+                    : kind === "proof_validation"
+                      ? "Validation preuve requise"
+                      : "Défi reçu";
+
+                return (
+                  <div key={challenge.id} className="space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      {pendingLabel}
+                    </p>
+                    <ChallengeCard
+                      id={challenge.id}
+                      title={challenge.title}
+                      points={challenge.points}
+                      status={challenge.status}
+                      creatorName={
+                        (challenge.creator as { username: string })?.username ?? "?"
+                      }
+                      targetName={
+                        (challenge.target as { username: string })?.username ?? "?"
+                      }
+                      groupId={groupId}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </section>
         </>

@@ -18,6 +18,7 @@ const nextConfig: NextConfig = {
 const withSerwist = withSerwistInit({
   swSrc: "src/app/sw.ts",
   swDest: "public/sw.js",
+  register: false,
   disable: process.env.NODE_ENV === "development",
 });
 

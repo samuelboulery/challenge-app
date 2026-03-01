@@ -10,12 +10,24 @@ declare global {
 
 declare const self: ServiceWorkerGlobalScope;
 
+const htmlAndRscNetworkOnly = [
+  {
+    matcher: ({ request }: { request: Request }) => request.mode === "navigate",
+    handler: "NetworkOnly" as const,
+  },
+  {
+    matcher: ({ request }: { request: Request }) =>
+      request.headers.get("RSC") === "1",
+    handler: "NetworkOnly" as const,
+  },
+];
+
 const serwist = new Serwist({
   precacheEntries: self.__SW_MANIFEST,
-  skipWaiting: true,
-  clientsClaim: true,
+  skipWaiting: false,
+  clientsClaim: false,
   navigationPreload: true,
-  runtimeCaching: defaultCache,
+  runtimeCaching: [...htmlAndRscNetworkOnly, ...defaultCache],
 });
 
 serwist.addEventListeners();
