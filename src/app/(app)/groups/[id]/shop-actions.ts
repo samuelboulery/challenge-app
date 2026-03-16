@@ -13,9 +13,9 @@ import {
 import { notify } from "@/lib/notifications";
 import { awardBadges } from "@/lib/badges";
 import type { StoreItemType } from "@/lib/store-item-types";
-import { SYSTEM_STORE_ITEM_TYPES, sortShopItemsByCategoryAndPrice } from "@/lib/store-item-types";
+import { SYSTEM_ITEM_TYPES_SET, EFFECT_PANEL_EXCLUDED_ITEM_TYPES, sortShopItemsByCategoryAndPrice } from "@/lib/store-item-types";
 
-const SYSTEM_ITEM_TYPES = new Set<string>(SYSTEM_STORE_ITEM_TYPES);
+type ServerClient = Awaited<ReturnType<typeof createClient>>;
 
 type ShopItemView = {
   id: string;
@@ -27,6 +27,38 @@ type ShopItemView = {
   item_type: string;
   source: "custom" | "global";
 };
+
+function mapPurchaseError(errorMessage: string): string {
+  if (errorMessage.includes("Insufficient points")) return "Points insuffisants";
+  if (errorMessage.includes("out of stock")) return "Rupture de stock";
+  if (errorMessage.includes("Not a member")) return "Tu n'es pas membre de ce groupe";
+  if (errorMessage.includes("Item not purchasable")) return "Cet item n'est pas disponible à l'achat";
+  if (errorMessage.includes("disabled for this group")) return "Cet item est désactivé dans ce groupe";
+  if (errorMessage.includes("handcuffed")) return "Tu es sous l'effet des menottes pendant 12h";
+  if (errorMessage.includes("embargoed")) return "Tu es sous embargo et ne peux pas accéder au store";
+  return errorMessage;
+}
+
+async function resolveItemType(
+  supabase: ServerClient,
+  itemId: string,
+): Promise<{ itemType: string | null; isLocalItem: boolean }> {
+  const { data: shopItem } = await supabase
+    .from("shop_items")
+    .select("item_type")
+    .eq("id", itemId)
+    .maybeSingle();
+
+  if (shopItem) return { itemType: shopItem.item_type, isLocalItem: true };
+
+  const { data: globalItem } = await supabase
+    .from("global_shop_items")
+    .select("item_type")
+    .eq("id", itemId)
+    .maybeSingle();
+
+  return { itemType: globalItem?.item_type ?? null, isLocalItem: false };
+}
 
 export async function addShopItem(formData: FormData) {
   const parsed = parseFormData(addShopItemSchema, formData);
@@ -97,21 +129,7 @@ export async function purchaseItem(formData: FormData) {
 
   if (!user) return { error: "Non authentifié" };
 
-  const { data: shopItem } = await supabase
-    .from("shop_items")
-    .select("item_type")
-    .eq("id", parsed.data.itemId)
-    .maybeSingle();
-
-  const { data: globalItem } = shopItem
-    ? ({ data: null } as { data: { item_type: string } | null })
-    : await supabase
-        .from("global_shop_items")
-        .select("item_type")
-        .eq("id", parsed.data.itemId)
-        .maybeSingle();
-
-  const purchasedItemType = shopItem?.item_type ?? globalItem?.item_type ?? null;
+  const { itemType: purchasedItemType, isLocalItem } = await resolveItemType(supabase, parsed.data.itemId);
 
   if (purchasedItemType === "menottes" || purchasedItemType === "embargo") {
     return { error: "Choisis une cible avant l'achat de cet item" };
@@ -122,27 +140,7 @@ export async function purchaseItem(formData: FormData) {
     p_group_id: parsed.data.groupId,
   });
 
-  if (error) {
-    if (error.message.includes("Insufficient points"))
-      return { error: "Points insuffisants" };
-    if (error.message.includes("out of stock"))
-      return { error: "Rupture de stock" };
-    if (error.message.includes("Not a member"))
-      return { error: "Tu n'es pas membre de ce groupe" };
-    if (error.message.includes("Item not purchasable")) {
-      return { error: "Cet item n'est pas disponible à l'achat" };
-    }
-    if (error.message.includes("disabled for this group")) {
-      return { error: "Cet item est désactivé dans ce groupe" };
-    }
-    if (error.message.includes("handcuffed")) {
-      return { error: "Tu es sous l'effet des menottes pendant 12h" };
-    }
-    if (error.message.includes("embargoed")) {
-      return { error: "Tu es sous embargo et ne peux pas accéder au store" };
-    }
-    return { error: error.message };
-  }
+  if (error) return { error: mapPurchaseError(error.message) };
 
   await awardBadges(user.id);
 
@@ -156,7 +154,7 @@ export async function purchaseItem(formData: FormData) {
       .from("inventory")
       .select("id")
       .eq("profile_id", user.id)
-      .eq(shopItem ? "shop_item_id" : "global_shop_item_id", parsed.data.itemId)
+      .eq(isLocalItem ? "shop_item_id" : "global_shop_item_id", parsed.data.itemId)
       .eq("purchased_group_id", parsed.data.groupId)
       .is("used_at", null)
       .order("purchased_at", { ascending: false })
@@ -265,21 +263,7 @@ export async function purchaseImmediateMalusWithTarget(args: {
     return { error: "Cible invalide pour ce groupe" };
   }
 
-  const { data: shopItem } = await supabase
-    .from("shop_items")
-    .select("item_type")
-    .eq("id", args.itemId)
-    .maybeSingle();
-  const { data: globalItem } = shopItem
-    ? ({ data: null } as { data: { item_type: string } | null })
-    : await supabase
-        .from("global_shop_items")
-        .select("item_type")
-        .eq("id", args.itemId)
-        .maybeSingle();
-
-  const itemType = shopItem?.item_type ?? globalItem?.item_type ?? null;
-  const isLocalItem = !!shopItem;
+  const { itemType, isLocalItem } = await resolveItemType(supabase, args.itemId);
   if (itemType !== "menottes" && itemType !== "embargo") {
     return { error: "Cet item ne supporte pas l'application immédiate ciblée" };
   }
@@ -289,27 +273,7 @@ export async function purchaseImmediateMalusWithTarget(args: {
     p_group_id: args.groupId,
   });
 
-  if (purchaseError) {
-    if (purchaseError.message.includes("Insufficient points"))
-      return { error: "Points insuffisants" };
-    if (purchaseError.message.includes("out of stock"))
-      return { error: "Rupture de stock" };
-    if (purchaseError.message.includes("Not a member"))
-      return { error: "Tu n'es pas membre de ce groupe" };
-    if (purchaseError.message.includes("Item not purchasable")) {
-      return { error: "Cet item n'est pas disponible à l'achat" };
-    }
-    if (purchaseError.message.includes("disabled for this group")) {
-      return { error: "Cet item est désactivé dans ce groupe" };
-    }
-    if (purchaseError.message.includes("handcuffed")) {
-      return { error: "Tu es sous l'effet des menottes pendant 12h" };
-    }
-    if (purchaseError.message.includes("embargoed")) {
-      return { error: "Tu es sous embargo et ne peux pas accéder au store" };
-    }
-    return { error: purchaseError.message };
-  }
+  if (purchaseError) return { error: mapPurchaseError(purchaseError.message) };
 
   const { data: invItem } = await supabase
     .from("inventory")
@@ -408,7 +372,7 @@ export async function getShopItems(groupId: string) {
   const seenSystemTypes = new Set<string>();
 
   for (const item of rows) {
-    if (!SYSTEM_ITEM_TYPES.has(item.item_type)) {
+    if (!SYSTEM_ITEM_TYPES_SET.has(item.item_type)) {
       deduped.push(item);
       continue;
     }
@@ -576,21 +540,22 @@ export async function getUserItemsByType(groupId: string, itemType: string) {
 
   if (!user) return [];
 
-  const { data } = await supabase
-    .from("inventory")
-    .select("id, purchased_at, shop_items!inner(name, item_type, group_id)")
-    .eq("profile_id", user.id)
-    .is("used_at", null)
-    .eq("shop_items.item_type", itemType)
-    .eq("shop_items.group_id", groupId);
-
-  const { data: globalData } = await supabase
-    .from("inventory")
-    .select("id, purchased_at, global_shop_items!inner(name, item_type), purchased_group_id")
-    .eq("profile_id", user.id)
-    .is("used_at", null)
-    .eq("purchased_group_id", groupId)
-    .eq("global_shop_items.item_type", itemType);
+  const [{ data }, { data: globalData }] = await Promise.all([
+    supabase
+      .from("inventory")
+      .select("id, purchased_at, shop_items!inner(name, item_type, group_id)")
+      .eq("profile_id", user.id)
+      .is("used_at", null)
+      .eq("shop_items.item_type", itemType)
+      .eq("shop_items.group_id", groupId),
+    supabase
+      .from("inventory")
+      .select("id, purchased_at, global_shop_items!inner(name, item_type), purchased_group_id")
+      .eq("profile_id", user.id)
+      .is("used_at", null)
+      .eq("purchased_group_id", groupId)
+      .eq("global_shop_items.item_type", itemType),
+  ]);
 
   const mappedGlobal = (globalData ?? []).map((row) => {
     const item = row.global_shop_items as { name: string; item_type: string } | null;
@@ -649,7 +614,7 @@ export async function getMyEffectItems(groupId: string) {
     .map((row) => {
       const item = row.global_shop_items as { name: string; item_type: string } | null;
       if (!item) return null;
-      if (["joker", "booster", "voleur", "item_49_3", "custom"].includes(item.item_type)) {
+      if ((EFFECT_PANEL_EXCLUDED_ITEM_TYPES as readonly string[]).includes(item.item_type)) {
         return null;
       }
       return {

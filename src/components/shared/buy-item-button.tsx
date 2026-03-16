@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/responsive-panel";
 import { ShoppingCart, Skull } from "lucide-react";
 import { toast } from "sonner";
+import { IMMEDIATE_TARGET_ITEM_TYPES } from "@/lib/store-item-types";
 
 interface BuyItemButtonProps {
   itemId: string;
@@ -73,19 +74,13 @@ export function BuyItemButton({
     null,
   );
 
-  const handleClick = () => {
-    if (itemType === "voleur") {
-      setConfirmOpen(true);
-    }
-  };
-
   if (itemType === "voleur") {
     return (
       <>
         <Button
           size="sm"
           disabled={pending || disabled}
-          onClick={handleClick}
+          onClick={() => setConfirmOpen(true)}
         >
           <ShoppingCart className="mr-1 size-3.5" />
           {price} pts
@@ -130,7 +125,7 @@ export function BuyItemButton({
     );
   }
 
-  const isImmediateTargetItem = itemType === "menottes" || itemType === "embargo";
+  const isImmediateTargetItem = (IMMEDIATE_TARGET_ITEM_TYPES as readonly string[]).includes(itemType);
 
   if (isImmediateTargetItem) {
     return (

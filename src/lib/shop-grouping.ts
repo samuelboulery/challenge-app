@@ -1,6 +1,7 @@
 import {
   getStoreItemCategory,
   STORE_ITEM_CATEGORY_LABELS,
+  STORE_CATEGORY_ORDER,
   type StoreItemCategory,
 } from "@/lib/store-item-types";
 
@@ -9,14 +10,11 @@ type ShopLikeItem = {
   [key: string]: unknown;
 };
 
-const CATEGORY_ORDER: StoreItemCategory[] = [
-  "defense",
-  "attaque",
-  "chaos",
-  "economie",
-  "special",
-  "custom",
-];
+const CATEGORY_ORDER = (
+  Object.entries(STORE_CATEGORY_ORDER) as [StoreItemCategory, number][]
+)
+  .sort(([, a], [, b]) => a - b)
+  .map(([cat]) => cat);
 
 export function groupShopItemsByCategory<T extends ShopLikeItem>(items: T[]) {
   const grouped = new Map<StoreItemCategory, T[]>();

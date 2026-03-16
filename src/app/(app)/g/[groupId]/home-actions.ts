@@ -236,12 +236,11 @@ export async function getGroupHomeData(groupId: string) {
     seasonKey: activeSeason?.season_key ?? null,
     crownHolderProfileId: activeSeason?.crown_holder_profile_id ?? null,
     shopItems,
-    groupMembers:
-      (allMembers ?? []).map((member) => ({
-        id: member.profile_id,
-        username:
-          (member.profiles as { username: string } | null)?.username ?? "Utilisateur",
-      })) ?? [],
+    groupMembers: (allMembers ?? []).map((member) => ({
+      id: member.profile_id,
+      username:
+        (member.profiles as { username: string } | null)?.username ?? "Utilisateur",
+    })),
     isAdmin,
     userId: user.id,
   };

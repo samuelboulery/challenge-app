@@ -18,7 +18,11 @@ import { BuyItemButton } from "./buy-item-button";
 import { Coins, Package, Trash2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { useEffect } from "react";
-import { getStoreItemCategoryLabel } from "@/lib/store-item-types";
+import {
+  getStoreItemCategoryLabel,
+  IMMEDIATE_AUTO_EFFECT_ITEM_TYPES,
+  IMMEDIATE_TARGET_ITEM_TYPES,
+} from "@/lib/store-item-types";
 import { StoreItemCategoryBadge } from "./store-item-category-badge";
 
 interface ShopItemCardProps {
@@ -82,10 +86,6 @@ export function ShopItemCard({
   const itemCategoryLabel = getStoreItemCategoryLabel(itemType);
   const stockLabel = stock === null ? "Illimité" : `${stock} restant${stock > 1 ? "s" : ""}`;
 
-  const openDetails = () => {
-    setDetailsOpen(true);
-  };
-
   return (
     <>
       <Card className={outOfStock ? "py-0 opacity-60" : "py-0"}>
@@ -93,11 +93,11 @@ export function ShopItemCard({
           className="flex items-center justify-between py-2.5 pr-2.5 sm:py-3 sm:pr-3"
           role="button"
           tabIndex={0}
-          onClick={openDetails}
+          onClick={() => setDetailsOpen(true)}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") {
               event.preventDefault();
-              openDetails();
+              setDetailsOpen(true);
             }
           }}
         >
@@ -116,12 +116,12 @@ export function ShopItemCard({
                 {stockLabel}
               </span>
             </div>
-            {["voleur", "robin_des_bois", "mouchard"].includes(itemType) && (
+            {(IMMEDIATE_AUTO_EFFECT_ITEM_TYPES as readonly string[]).includes(itemType) && (
               <p className="mt-0.5 text-xs text-orange-600 dark:text-orange-400 sm:mt-1">
                 Effet immédiat à l&apos;achat
               </p>
             )}
-            {["menottes", "embargo"].includes(itemType) && (
+            {(IMMEDIATE_TARGET_ITEM_TYPES as readonly string[]).includes(itemType) && (
               <p className="mt-0.5 text-xs text-orange-600 dark:text-orange-400 sm:mt-1">
                 Effet immédiat avec choix de cible
               </p>
