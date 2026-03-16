@@ -23,11 +23,11 @@ export default async function GroupHomePage({
   params: Promise<{ groupId: string }>;
 }) {
   const { groupId } = await params;
-  const [groupHomeData, effectiveShopPrices] = await Promise.all([
+  const [groupHomeData, effectiveShopPrices, jokerIntel] = await Promise.all([
     getGroupHomeData(groupId),
     getEffectiveShopPrices(groupId),
+    getGroupJokerIntel(groupId),
   ]);
-  const jokerIntel = await getGroupJokerIntel(groupId);
   const {
     profile,
     currentGroupPoints,
@@ -41,6 +41,8 @@ export default async function GroupHomePage({
     isAdmin,
     userId,
   } = groupHomeData;
+
+  const groupedShopItems = groupShopItemsByCategory(shopItems);
 
   return (
     <main className="px-4 pt-5 sm:pt-8">
@@ -189,55 +191,50 @@ export default async function GroupHomePage({
         </TabsContent>
 
         <TabsContent value="shop" className="mt-3 sm:mt-4">
-          {(() => {
-            const groupedItems = groupShopItemsByCategory(shopItems);
-            return (
-              <div className="space-y-3">
-                {groupedItems.map((group) => (
-                  <div key={group.category} className="space-y-2">
-                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide sm:text-xs">
-                      {group.label}
-                    </p>
-                    {group.items.map((item) => (
-                        <ShopItemCard
-                          key={item.id}
-                          id={item.id}
-                          groupId={groupId}
-                          name={item.name}
-                          description={item.description}
-                          price={effectiveShopPrices[item.id] ?? item.price}
-                          stock={item.stock}
-                          itemType={item.item_type}
-                          isAdmin={isAdmin}
-                        groupMembers={groupMembers}
-                        currentUserId={userId ?? undefined}
-                        />
-                    ))}
-                  </div>
+          <div className="space-y-3">
+            {groupedShopItems.map((group) => (
+              <div key={group.category} className="space-y-2">
+                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide sm:text-xs">
+                  {group.label}
+                </p>
+                {group.items.map((item) => (
+                  <ShopItemCard
+                    key={item.id}
+                    id={item.id}
+                    groupId={groupId}
+                    name={item.name}
+                    description={item.description}
+                    price={effectiveShopPrices[item.id] ?? item.price}
+                    stock={item.stock}
+                    itemType={item.item_type}
+                    isAdmin={isAdmin}
+                    groupMembers={groupMembers}
+                    currentUserId={userId ?? undefined}
+                  />
                 ))}
-                {isAdmin && (
-                  <div className="pt-1">
-                    <AddShopItemDialog groupId={groupId} />
-                  </div>
-                )}
-                {"success" in jokerIntel && jokerIntel.success && (
-                  <div className="rounded-lg border p-3">
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Mouchard actif (1h)
-                    </p>
-                    <div className="mt-2 space-y-1 text-sm">
-                      {jokerIntel.rows.map((row) => (
-                        <div key={row.profile_id} className="flex items-center justify-between">
-                          <span>{row.username}</span>
-                          <span className="font-medium">{row.jokers_available} joker(s)</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
-            );
-          })()}
+            ))}
+            {isAdmin && (
+              <div className="pt-1">
+                <AddShopItemDialog groupId={groupId} />
+              </div>
+            )}
+            {"success" in jokerIntel && jokerIntel.success && (
+              <div className="rounded-lg border p-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Mouchard actif (1h)
+                </p>
+                <div className="mt-2 space-y-1 text-sm">
+                  {jokerIntel.rows.map((row) => (
+                    <div key={row.profile_id} className="flex items-center justify-between">
+                      <span>{row.username}</span>
+                      <span className="font-medium">{row.jokers_available} joker(s)</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </TabsContent>
       </Tabs>
     </main>

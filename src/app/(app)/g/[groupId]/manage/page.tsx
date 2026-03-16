@@ -115,6 +115,8 @@ export default async function GroupManagePage({
       (g.members as unknown as { count: number }[])?.[0]?.count ?? 0,
   }));
 
+  const groupedShopItems = groupShopItemsByCategory(shopItems);
+
   return (
     <main className="px-4 pt-8">
       <div>
@@ -147,75 +149,70 @@ export default async function GroupManagePage({
           </h2>
           {isAdmin && <AddShopItemDialog groupId={groupId} />}
         </div>
-        {(() => {
-          const groupedItems = groupShopItemsByCategory(shopItems);
-          return (
-            <div className="space-y-4">
-              {groupedItems.map((group) => (
-                <div key={group.category} className="space-y-3">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    {group.label}
-                  </p>
-                  {group.items.map((item) => (
-                    <ShopItemCard
-                      key={item.id}
-                      id={item.id}
-                      groupId={groupId}
-                      name={item.name}
-                      description={item.description}
-                      price={item.price}
-                      stock={item.stock}
-                      itemType={item.item_type}
-                      isAdmin={isAdmin}
-                      groupMembers={(members ?? []).map((member) => ({
-                        id: member.profile_id,
-                        username:
-                          (member.profiles as { username: string } | null)?.username ??
-                          "Utilisateur",
-                      }))}
-                      currentUserId={user?.id}
-                    />
-                  ))}
-                </div>
+        <div className="space-y-4">
+          {groupedShopItems.map((group) => (
+            <div key={group.category} className="space-y-3">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                {group.label}
+              </p>
+              {group.items.map((item) => (
+                <ShopItemCard
+                  key={item.id}
+                  id={item.id}
+                  groupId={groupId}
+                  name={item.name}
+                  description={item.description}
+                  price={item.price}
+                  stock={item.stock}
+                  itemType={item.item_type}
+                  isAdmin={isAdmin}
+                  groupMembers={(members ?? []).map((member) => ({
+                    id: member.profile_id,
+                    username:
+                      (member.profiles as { username: string } | null)?.username ??
+                      "Utilisateur",
+                  }))}
+                  currentUserId={user?.id}
+                />
               ))}
-              {groupedItems.length === 0 && (
-                <div className="flex flex-col items-center gap-2 py-8 text-center">
-                  <ShoppingBag className="size-6 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">
-                    Aucun item en vente.
-                  </p>
-                </div>
-              )}
-              {isAdmin && globalItemsState.length > 0 && (
-                <div className="rounded-lg border p-3">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Activation des items communs
-                  </p>
-                  <div className="mt-3 space-y-2">
-                    {globalItemsState.map((item) => (
-                      <form key={item.id} action={toggleGlobalItemForGroup} className="flex items-center justify-between gap-2">
-                        <input type="hidden" name="groupId" value={groupId} />
-                        <input type="hidden" name="globalItemId" value={item.id} />
-                        <input
-                          type="hidden"
-                          name="enabled"
-                          value={item.enabled ? "false" : "true"}
-                        />
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium">{item.name}</p>
-                          <p className="text-xs text-muted-foreground">{item.price} pts</p>
-                        </div>
-                        <Button type="submit" size="sm" variant={item.enabled ? "outline" : "default"}>
-                          {item.enabled ? "Désactiver" : "Activer"}
-                        </Button>
-                      </form>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
-          );
-        })()}
+          ))}
+          {groupedShopItems.length === 0 && (
+            <div className="flex flex-col items-center gap-2 py-8 text-center">
+              <ShoppingBag className="size-6 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
+                Aucun item en vente.
+              </p>
+            </div>
+          )}
+          {isAdmin && globalItemsState.length > 0 && (
+            <div className="rounded-lg border p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Activation des items communs
+              </p>
+              <div className="mt-3 space-y-2">
+                {globalItemsState.map((item) => (
+                  <form key={item.id} action={toggleGlobalItemForGroup} className="flex items-center justify-between gap-2">
+                    <input type="hidden" name="groupId" value={groupId} />
+                    <input type="hidden" name="globalItemId" value={item.id} />
+                    <input
+                      type="hidden"
+                      name="enabled"
+                      value={item.enabled ? "false" : "true"}
+                    />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">{item.name}</p>
+                      <p className="text-xs text-muted-foreground">{item.price} pts</p>
+                    </div>
+                    <Button type="submit" size="sm" variant={item.enabled ? "outline" : "default"}>
+                      {item.enabled ? "Désactiver" : "Activer"}
+                    </Button>
+                  </form>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </section>
 
       <Separator className="my-6" />

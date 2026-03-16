@@ -27,6 +27,31 @@ export const SYSTEM_STORE_ITEM_TYPES = STORE_ITEM_TYPES.filter(
   (itemType): itemType is Exclude<StoreItemType, "custom"> => itemType !== "custom",
 );
 
+export const SYSTEM_ITEM_TYPES_SET = new Set<string>(SYSTEM_STORE_ITEM_TYPES);
+
+// Items that show "Effet immédiat à l'achat" label (auto-apply on purchase)
+export const IMMEDIATE_AUTO_EFFECT_ITEM_TYPES = ["voleur", "robin_des_bois", "mouchard"] as const;
+
+// Items that apply their effect immediately on purchase (auto-use at buy)
+export const IMMEDIATE_EFFECT_ITEM_TYPES = [
+  "voleur",
+  "robin_des_bois",
+  "mouchard",
+  "mode_fantome",
+] as const;
+
+// Items that require choosing a target immediately on purchase
+export const IMMEDIATE_TARGET_ITEM_TYPES = ["menottes", "embargo"] as const;
+
+// Item types that are NOT effect items (joker/economy/misc)
+export const NON_IMMEDIATE_EFFECT_ITEM_TYPES = [
+  "custom",
+  "joker",
+  "booster",
+  "voleur",
+  "item_49_3",
+] as const;
+
 export const STORE_ITEM_LABELS: Record<StoreItemType, string> = {
   custom: "Personnalisé",
   joker: "Joker",
@@ -90,7 +115,7 @@ export const STORE_ITEM_CATEGORY_BY_TYPE: Record<StoreItemType, StoreItemCategor
   custom: "custom",
 };
 
-const STORE_CATEGORY_ORDER: Record<StoreItemCategory, number> = {
+export const STORE_CATEGORY_ORDER: Record<StoreItemCategory, number> = {
   defense: 0,
   attaque: 1,
   chaos: 2,
