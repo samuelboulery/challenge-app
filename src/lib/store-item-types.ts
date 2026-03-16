@@ -43,8 +43,10 @@ export const IMMEDIATE_EFFECT_ITEM_TYPES = [
 // Items that require choosing a target immediately on purchase
 export const IMMEDIATE_TARGET_ITEM_TYPES = ["menottes", "embargo"] as const;
 
-// Item types that are NOT effect items (joker/economy/misc)
-export const NON_IMMEDIATE_EFFECT_ITEM_TYPES = [
+// Item types excluded from the usable-effects inventory panel.
+// Includes economy/misc items (joker, booster, item_49_3, custom) AND voleur,
+// because voleur auto-applies immediately at purchase and never sits as a usable inventory item.
+export const EFFECT_PANEL_EXCLUDED_ITEM_TYPES = [
   "custom",
   "joker",
   "booster",

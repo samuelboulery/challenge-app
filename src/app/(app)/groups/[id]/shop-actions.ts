@@ -13,7 +13,7 @@ import {
 import { notify } from "@/lib/notifications";
 import { awardBadges } from "@/lib/badges";
 import type { StoreItemType } from "@/lib/store-item-types";
-import { SYSTEM_ITEM_TYPES_SET, NON_IMMEDIATE_EFFECT_ITEM_TYPES, sortShopItemsByCategoryAndPrice } from "@/lib/store-item-types";
+import { SYSTEM_ITEM_TYPES_SET, EFFECT_PANEL_EXCLUDED_ITEM_TYPES, sortShopItemsByCategoryAndPrice } from "@/lib/store-item-types";
 
 type ServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -614,7 +614,7 @@ export async function getMyEffectItems(groupId: string) {
     .map((row) => {
       const item = row.global_shop_items as { name: string; item_type: string } | null;
       if (!item) return null;
-      if ((NON_IMMEDIATE_EFFECT_ITEM_TYPES as readonly string[]).includes(item.item_type)) {
+      if ((EFFECT_PANEL_EXCLUDED_ITEM_TYPES as readonly string[]).includes(item.item_type)) {
         return null;
       }
       return {
